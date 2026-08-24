@@ -1,5 +1,16 @@
+# Dependencies
 node_modules/
 
-# Local working notes, not part of the published repository
-docs/design.md
-DEPENDABOT_SECURITY.md
+# Logs
+*.log
+npm-debug.log*
+
+# Test coverage
+coverage/
+
+# Environment
+.env
+.env.*
+
+# OS
+.DS_Store

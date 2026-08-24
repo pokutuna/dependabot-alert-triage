@@ -14,9 +14,7 @@ async function run(): Promise<void> {
   const configPath = core.getInput("config");
   const maxDismissalsInput = core.getInput("max_dismissals");
   if (!/^\d+$/.test(maxDismissalsInput) || Number(maxDismissalsInput) < 1) {
-    throw new Error(
-      `max_dismissals must be a positive integer, got: ${maxDismissalsInput}`,
-    );
+    throw new Error(`max_dismissals must be a positive integer, got: ${maxDismissalsInput}`);
   }
   const maxDismissals = Number(maxDismissalsInput);
 
@@ -24,20 +22,15 @@ async function run(): Promise<void> {
   const octokit = github.getOctokit(token);
   const { owner, repo } = github.context.repo;
 
-  const alerts = (await octokit.paginate(
-    octokit.rest.dependabot.listAlertsForRepo,
-    {
-      owner,
-      repo,
-      state: "open",
-      per_page: 100,
-    },
-  )) as unknown as DependabotAlert[];
+  const alerts = (await octokit.paginate(octokit.rest.dependabot.listAlertsForRepo, {
+    owner,
+    repo,
+    state: "open",
+    per_page: 100,
+  })) as unknown as DependabotAlert[];
 
   const candidates = findCandidates(alerts, config.rules);
-  core.info(
-    `Found ${candidates.length} candidates among ${alerts.length} open alerts`,
-  );
+  core.info(`Found ${candidates.length} candidates among ${alerts.length} open alerts`);
   core.setOutput("candidates_count", candidates.length);
 
   await writeSummary(candidates, dryRun);
@@ -67,9 +60,7 @@ async function run(): Promise<void> {
       alert_number: alert.number,
     });
     if (!matchesRule(fresh as unknown as DependabotAlert, rule)) {
-      core.info(
-        `Skipped alert #${alert.number}: it no longer matches the rule`,
-      );
+      core.info(`Skipped alert #${alert.number}: it no longer matches the rule`);
       skipped += 1;
       continue;
     }
@@ -89,14 +80,8 @@ async function run(): Promise<void> {
   core.setOutput("dismissed_count", dismissed);
 }
 
-async function writeSummary(
-  candidates: Candidate[],
-  dryRun: boolean,
-): Promise<void> {
-  core.summary.addHeading(
-    `Dependabot alert triage ${dryRun ? "(dry run)" : ""}`.trim(),
-    2,
-  );
+async function writeSummary(candidates: Candidate[], dryRun: boolean): Promise<void> {
+  core.summary.addHeading(`Dependabot alert triage ${dryRun ? "(dry run)" : ""}`.trim(), 2);
   if (candidates.length === 0) {
     core.summary.addRaw("No open alerts matched the rules.", true);
   } else {
@@ -124,6 +109,4 @@ async function writeSummary(
   await core.summary.write();
 }
 
-run().catch((error) =>
-  core.setFailed(error instanceof Error ? error.message : String(error)),
-);
+run().catch((error) => core.setFailed(error instanceof Error ? error.message : String(error)));

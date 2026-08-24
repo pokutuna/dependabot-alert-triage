@@ -15,8 +15,9 @@ A public GitHub Action that dismisses Dependabot alerts matching user-defined ru
 
 ## Essential commands
 
-- Test: `npm test` (single file: `npx vitest run src/match.test.ts`)
+- Test: `npm test` (single file: `npx vitest run src/triage.test.ts`)
 - Typecheck: `npm run typecheck`
+- Lint / Format: `npm run lint` (oxlint), `npm run fmt` (oxfmt; CI checks with `npm run fmt:check`)
 - Build the bundle: `npm run build` (regenerate `dist/` and commit it whenever `src/` changes)
 
 ## Core rules

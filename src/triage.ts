@@ -8,20 +8,12 @@ export const ruleSchema = z
     match: z
       .object({
         manifest_path: z.string().min(1).optional(),
-        packages: z
-          .record(z.string(), z.array(z.string().min(1)).min(1))
-          .optional(),
+        packages: z.record(z.string(), z.array(z.string().min(1)).min(1)).optional(),
       })
       .strict()
       .optional(),
     classification: z.enum(["general", "malware"]).default("general"),
-    reason: z.enum([
-      "fix_started",
-      "inaccurate",
-      "no_bandwidth",
-      "not_used",
-      "tolerable_risk",
-    ]),
+    reason: z.enum(["fix_started", "inaccurate", "no_bandwidth", "not_used", "tolerable_risk"]),
     comment: z.string().min(1),
   })
   .strict();
@@ -69,11 +61,7 @@ export function matchesRule(alert: DependabotAlert, rule: TriageRule): boolean {
 
   if (rule.match?.manifest_path) {
     const manifestPath = alert.dependency.manifest_path;
-    if (
-      !manifestPath ||
-      !picomatch.isMatch(manifestPath, rule.match.manifest_path)
-    )
-      return false;
+    if (!manifestPath || !picomatch.isMatch(manifestPath, rule.match.manifest_path)) return false;
   }
 
   if (rule.match?.packages) {
@@ -92,10 +80,7 @@ export interface Candidate {
   ruleIndex: number;
 }
 
-export function findCandidates(
-  alerts: DependabotAlert[],
-  rules: TriageRule[],
-): Candidate[] {
+export function findCandidates(alerts: DependabotAlert[], rules: TriageRule[]): Candidate[] {
   const candidates: Candidate[] = [];
   for (const alert of alerts) {
     const ruleIndex = rules.findIndex((rule) => matchesRule(alert, rule));

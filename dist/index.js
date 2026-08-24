@@ -37032,13 +37032,7 @@ var ruleSchema = external_exports.object({
     packages: external_exports.record(external_exports.string(), external_exports.array(external_exports.string().min(1)).min(1)).optional()
   }).strict().optional(),
   classification: external_exports.enum(["general", "malware"]).default("general"),
-  reason: external_exports.enum([
-    "fix_started",
-    "inaccurate",
-    "no_bandwidth",
-    "not_used",
-    "tolerable_risk"
-  ]),
+  reason: external_exports.enum(["fix_started", "inaccurate", "no_bandwidth", "not_used", "tolerable_risk"]),
   comment: external_exports.string().min(1)
 }).strict();
 var configSchema = external_exports.object({
@@ -37059,8 +37053,7 @@ function matchesRule(alert, rule) {
   if (classification !== rule.classification) return false;
   if (rule.match?.manifest_path) {
     const manifestPath = alert.dependency.manifest_path;
-    if (!manifestPath || !import_picomatch.default.isMatch(manifestPath, rule.match.manifest_path))
-      return false;
+    if (!manifestPath || !import_picomatch.default.isMatch(manifestPath, rule.match.manifest_path)) return false;
   }
   if (rule.match?.packages) {
     const pkg = alert.dependency.package;
@@ -37088,27 +37081,20 @@ async function run() {
   const configPath = core.getInput("config");
   const maxDismissalsInput = core.getInput("max_dismissals");
   if (!/^\d+$/.test(maxDismissalsInput) || Number(maxDismissalsInput) < 1) {
-    throw new Error(
-      `max_dismissals must be a positive integer, got: ${maxDismissalsInput}`
-    );
+    throw new Error(`max_dismissals must be a positive integer, got: ${maxDismissalsInput}`);
   }
   const maxDismissals = Number(maxDismissalsInput);
   const config = loadConfig(configPath);
   const octokit = github.getOctokit(token);
   const { owner, repo } = github.context.repo;
-  const alerts = await octokit.paginate(
-    octokit.rest.dependabot.listAlertsForRepo,
-    {
-      owner,
-      repo,
-      state: "open",
-      per_page: 100
-    }
-  );
+  const alerts = await octokit.paginate(octokit.rest.dependabot.listAlertsForRepo, {
+    owner,
+    repo,
+    state: "open",
+    per_page: 100
+  });
   const candidates = findCandidates(alerts, config.rules);
-  core.info(
-    `Found ${candidates.length} candidates among ${alerts.length} open alerts`
-  );
+  core.info(`Found ${candidates.length} candidates among ${alerts.length} open alerts`);
   core.setOutput("candidates_count", candidates.length);
   await writeSummary(candidates, dryRun);
   if (dryRun) {
@@ -37132,9 +37118,7 @@ async function run() {
       alert_number: alert.number
     });
     if (!matchesRule(fresh, rule)) {
-      core.info(
-        `Skipped alert #${alert.number}: it no longer matches the rule`
-      );
+      core.info(`Skipped alert #${alert.number}: it no longer matches the rule`);
       skipped += 1;
       continue;
     }
@@ -37153,10 +37137,7 @@ async function run() {
   core.setOutput("dismissed_count", dismissed);
 }
 async function writeSummary(candidates, dryRun) {
-  core.summary.addHeading(
-    `Dependabot alert triage ${dryRun ? "(dry run)" : ""}`.trim(),
-    2
-  );
+  core.summary.addHeading(`Dependabot alert triage ${dryRun ? "(dry run)" : ""}`.trim(), 2);
   if (candidates.length === 0) {
     core.summary.addRaw("No open alerts matched the rules.", true);
   } else {
@@ -37181,9 +37162,7 @@ async function writeSummary(candidates, dryRun) {
   }
   await core.summary.write();
 }
-run().catch(
-  (error) => core.setFailed(error instanceof Error ? error.message : String(error))
-);
+run().catch((error) => core.setFailed(error instanceof Error ? error.message : String(error)));
 /*! Bundled license information:
 
 undici/lib/fetch/body.js:

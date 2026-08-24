@@ -58,37 +58,27 @@ rules:
   });
 
   it("rejects a rule without reason", () => {
-    expect(() => loadConfig(writeConfig("rules:\n  - comment: x\n"))).toThrow(
-      /reason/,
-    );
+    expect(() => loadConfig(writeConfig("rules:\n  - comment: x\n"))).toThrow(/reason/);
   });
 
   it("rejects a rule without comment", () => {
-    expect(() =>
-      loadConfig(writeConfig("rules:\n  - reason: not_used\n")),
-    ).toThrow(/comment/);
+    expect(() => loadConfig(writeConfig("rules:\n  - reason: not_used\n"))).toThrow(/comment/);
   });
 
   it("rejects an unknown reason", () => {
-    expect(() =>
-      loadConfig(writeConfig("rules:\n  - reason: wontfix\n    comment: x\n")),
-    ).toThrow(/Invalid config/);
+    expect(() => loadConfig(writeConfig("rules:\n  - reason: wontfix\n    comment: x\n"))).toThrow(
+      /Invalid config/,
+    );
   });
 
   it("defaults classification to general", () => {
-    const config = loadConfig(
-      writeConfig("rules:\n  - reason: not_used\n    comment: x\n"),
-    );
+    const config = loadConfig(writeConfig("rules:\n  - reason: not_used\n    comment: x\n"));
     expect(config.rules[0].classification).toBe("general");
   });
 
   it("rejects unknown keys", () => {
     expect(() =>
-      loadConfig(
-        writeConfig(
-          "rules:\n  - reason: not_used\n    comment: x\n    severity: high\n",
-        ),
-      ),
+      loadConfig(writeConfig("rules:\n  - reason: not_used\n    comment: x\n    severity: high\n")),
     ).toThrow(/Invalid config/);
   });
 });
@@ -106,22 +96,15 @@ describe("matchesRule", () => {
 
   it("matches malware alerts only with an explicit malware rule", () => {
     const malware = alert({ security_advisory: { classification: "malware" } });
-    expect(matchesRule(malware, rule({ classification: "malware" }))).toBe(
-      true,
-    );
-    expect(matchesRule(alert(), rule({ classification: "malware" }))).toBe(
-      false,
-    );
+    expect(matchesRule(malware, rule({ classification: "malware" }))).toBe(true);
+    expect(matchesRule(alert(), rule({ classification: "malware" }))).toBe(false);
   });
 
   it("matches manifest_path with a glob", () => {
     const r = rule({ match: { manifest_path: "experiments/**" } });
     expect(matchesRule(alert(), r)).toBe(true);
     expect(
-      matchesRule(
-        alert({ dependency: { manifest_path: "apps/web/package-lock.json" } }),
-        r,
-      ),
+      matchesRule(alert({ dependency: { manifest_path: "apps/web/package-lock.json" } }), r),
     ).toBe(false);
   });
 

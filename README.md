@@ -1,5 +1,8 @@
 # dependabot-alert-triage
 
+> [!IMPORTANT]
+> This Action is under development and has no release yet. `@v1` in the examples does not exist. To try it now, reference `pokutuna/dependabot-alert-triage@main` — but only with a read-only token and `dry_run: true`. Before passing a write-capable token, pin to a full-length commit SHA you have reviewed.
+
 A GitHub Action that dismisses Dependabot alerts matching rules defined in your repository, with a required reason and comment.
 
 GitHub provides no way to exclude directories from Dependabot alert scanning. The `.github/dependabot.yml` options only control version-update pull requests, not the Dependency Graph or alerts. This Action fills the gap: you keep tracking alerts for the whole repository, and dismiss only the alerts you have decided to accept — for example, dependencies under an `experiments/` directory that you can't update.

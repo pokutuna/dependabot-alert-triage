@@ -22,7 +22,7 @@
   "devDependencies": {
     "@types/node": "^24.0.0",
     "@types/picomatch": "^4.0.0",
-    "esbuild": "^0.25.0",
+    "esbuild": "^0.28.2",
     "oxfmt": "^0.64.0",
     "oxlint": "^1.79.0",
     "typescript": "^5.7.0",

@@ -1,0 +1,30 @@
+name: Dependabot Alert Triage
+description: Dismiss Dependabot alerts that match rules defined in your repository
+author: pokutuna
+
+inputs:
+  token:
+    description: Token used to read and update Dependabot alerts
+    required: true
+  dry_run:
+    description: Only report matching alerts without dismissing them
+    required: false
+    default: "false"
+  config:
+    description: Path to the rule file
+    required: false
+    default: .github/dependabot-triage.yml
+  max_dismissals:
+    description: Maximum number of alerts to dismiss in one run
+    required: false
+    default: "20"
+
+outputs:
+  candidates_count:
+    description: Number of open alerts that matched a rule
+  dismissed_count:
+    description: Number of alerts that were dismissed
+
+runs:
+  using: node24
+  main: dist/index.js

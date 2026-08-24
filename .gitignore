@@ -1,0 +1,5 @@
+node_modules/
+
+# Local working notes, not part of the published repository
+docs/design.md
+DEPENDABOT_SECURITY.md

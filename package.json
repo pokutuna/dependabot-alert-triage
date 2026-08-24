@@ -13,7 +13,7 @@
     "build": "esbuild src/main.ts --bundle --platform=node --target=node24 --outfile=dist/index.js"
   },
   "dependencies": {
-    "@actions/core": "^1.11.1",
+    "@actions/core": "^3.0.1",
     "@actions/github": "^6.0.0",
     "picomatch": "^4.0.2",
     "yaml": "^2.7.0",

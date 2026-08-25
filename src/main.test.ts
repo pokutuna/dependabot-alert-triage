@@ -44,9 +44,7 @@ function setup(options: Options = {}) {
     ...options.inputs,
   };
 
-  vi.mocked(core.getInput).mockImplementation(
-    (name: string) => inputs[name] ?? "",
-  );
+  vi.mocked(core.getInput).mockImplementation((name: string) => inputs[name] ?? "");
   vi.mocked(core.getBooleanInput).mockImplementation(
     (name: string) => options.booleanInputs?.[name] ?? false,
   );
@@ -56,13 +54,9 @@ function setup(options: Options = {}) {
   vi.mocked(core.summary).write = vi.fn().mockResolvedValue(core.summary);
 
   const updateAlert = vi.fn().mockResolvedValue({});
-  const getAlert = vi.fn(
-    async ({ alert_number }: { alert_number: number }) => ({
-      data:
-        options.freshAlerts?.[alert_number] ??
-        alerts.find((a) => a.number === alert_number),
-    }),
-  );
+  const getAlert = vi.fn(async ({ alert_number }: { alert_number: number }) => ({
+    data: options.freshAlerts?.[alert_number] ?? alerts.find((a) => a.number === alert_number),
+  }));
 
   // paginate.iterator yields pages of 100, mirroring the per_page the action requests.
   const iterator = async function* () {
@@ -167,9 +161,7 @@ describe("run", () => {
     await run();
 
     expect(updateAlert).not.toHaveBeenCalled();
-    expect(core.setFailed).toHaveBeenCalledWith(
-      expect.stringContaining("max_dismissals"),
-    );
+    expect(core.setFailed).toHaveBeenCalledWith(expect.stringContaining("max_dismissals"));
     expect(outputs()).toMatchObject({ dismissed_count: 0 });
   });
 
@@ -181,9 +173,7 @@ describe("run", () => {
     await run();
 
     expect(updateAlert).toHaveBeenCalledTimes(1);
-    expect(updateAlert).toHaveBeenCalledWith(
-      expect.objectContaining({ alert_number: 2 }),
-    );
+    expect(updateAlert).toHaveBeenCalledWith(expect.objectContaining({ alert_number: 2 }));
     expect(outputs()).toMatchObject({ dismissed_count: 1 });
   });
 
@@ -196,33 +186,25 @@ describe("run", () => {
     await run();
 
     expect(updateAlert).toHaveBeenCalledTimes(100);
-    expect(core.warning).toHaveBeenCalledWith(
-      expect.stringContaining("max_alerts"),
-    );
+    expect(core.warning).toHaveBeenCalledWith(expect.stringContaining("max_alerts"));
     expect(outputs()).toMatchObject({ candidates_count: 100 });
   });
 
   it("refuses to run on pull request events", async () => {
     const { updateAlert } = setup({ eventName: "pull_request_target" });
-    await expect(run()).rejects.toThrow(
-      /Refusing to run on pull_request_target/,
-    );
+    await expect(run()).rejects.toThrow(/Refusing to run on pull_request_target/);
     expect(updateAlert).not.toHaveBeenCalled();
   });
 
   it("warns when the event is neither schedule nor workflow_dispatch", async () => {
     setup({ eventName: "push" });
     await run();
-    expect(core.warning).toHaveBeenCalledWith(
-      expect.stringContaining("Running on push"),
-    );
+    expect(core.warning).toHaveBeenCalledWith(expect.stringContaining("Running on push"));
   });
 
   it("rejects a max_dismissals value that overflows to a non-safe integer", async () => {
     setup({ inputs: { max_dismissals: "99999999999999999999" } });
-    await expect(run()).rejects.toThrow(
-      /max_dismissals must be a positive integer/,
-    );
+    await expect(run()).rejects.toThrow(/max_dismissals must be a positive integer/);
   });
 
   it("leaves malware alerts alone when no rule opts in", async () => {

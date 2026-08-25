@@ -10,7 +10,7 @@
     "lint": "oxlint src",
     "fmt": "oxfmt src",
     "fmt:check": "oxfmt --check src",
-    "build": "esbuild src/main.ts --bundle --platform=node --target=node24 --outfile=dist/index.js"
+    "build": "esbuild src/index.ts --bundle --platform=node --target=node24 --outfile=dist/index.js"
   },
   "dependencies": {
     "@actions/core": "^3.0.1",

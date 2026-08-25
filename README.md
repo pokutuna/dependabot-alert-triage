@@ -163,6 +163,7 @@ Pin the Action to a full-length commit SHA or a release tag in workflows that pa
 The Action applies these safeguards on every run:
 
 - Only `state == open` alerts are candidates.
+- The Action refuses to run on `pull_request` and `pull_request_target`, because those events would read the rule file from a ref that has not been reviewed. Use `schedule` or `workflow_dispatch`.
 - When `dry_run` is `true`, the Action reports candidates to the job summary and never updates an alert.
 - The candidate list is written to the job summary before applying.
 - Before each dismissal, the Action re-fetches the alert and re-verifies that it still matches the rule; alerts that changed are skipped.

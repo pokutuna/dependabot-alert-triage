@@ -8,7 +8,7 @@ A public GitHub Action that dismisses Dependabot alerts matching user-defined ru
 
 ## Tech stack
 
-- TypeScript JavaScript action (not composite): `action.yml` at the repository root, entrypoint `src/main.ts`, bundled to a committed `dist/index.js`
+- TypeScript JavaScript action (not composite): `action.yml` at the repository root, entrypoint `src/index.ts` (a thin wrapper so `src/main.ts` stays importable in tests), bundled to a committed `dist/index.js`
 - `@actions/core` and `@actions/github` (Octokit) for I/O and the Dependabot alerts API
 - `zod` + `yaml` for the rule file, `picomatch` for glob matching
 - npm and `vitest`; keep rule matching and dry-run/apply decisions as pure functions

@@ -10,13 +10,33 @@ import {
 
 function positiveIntInput(name: string): number {
   const raw = core.getInput(name);
-  if (!/^\d+$/.test(raw) || Number(raw) < 1) {
+  const value = Number(raw);
+  if (!/^\d+$/.test(raw) || !Number.isSafeInteger(value) || value < 1) {
     throw new Error(`${name} must be a positive integer, got: ${raw}`);
   }
-  return Number(raw);
+  return value;
 }
 
-async function run(): Promise<void> {
+// Pull request events run whatever rule file the head ref carries, so a rule
+// that has not been reviewed yet could select unrelated alerts. Nothing needs
+// dismissing at pull request time, so refuse instead of trusting the ref.
+const REFUSED_EVENTS = ["pull_request", "pull_request_target"];
+
+export async function run(): Promise<void> {
+  const eventName = github.context.eventName;
+  if (REFUSED_EVENTS.includes(eventName)) {
+    throw new Error(
+      `Refusing to run on ${eventName}, which would read the rule file from an unreviewed ref. ` +
+        "Trigger this action on schedule or workflow_dispatch instead.",
+    );
+  }
+  if (eventName !== "schedule" && eventName !== "workflow_dispatch") {
+    core.warning(
+      `Running on ${eventName}. This action dismisses alerts based on the rule file in the ` +
+        "checked-out ref; prefer schedule or workflow_dispatch so only reviewed rules apply.",
+    );
+  }
+
   const token = core.getInput("token", { required: true });
   const dryRun = core.getBooleanInput("dry_run");
   const configPath = core.getInput("config");
@@ -128,5 +148,3 @@ async function writeSummary(candidates: Candidate[], dryRun: boolean): Promise<v
   }
   await core.summary.write();
 }
-
-run().catch((error) => core.setFailed(error instanceof Error ? error.message : String(error)));

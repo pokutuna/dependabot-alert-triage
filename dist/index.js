@@ -47888,12 +47888,25 @@ function findCandidates(alerts, rules) {
 // src/main.ts
 function positiveIntInput(name) {
   const raw = getInput(name);
-  if (!/^\d+$/.test(raw) || Number(raw) < 1) {
+  const value = Number(raw);
+  if (!/^\d+$/.test(raw) || !Number.isSafeInteger(value) || value < 1) {
     throw new Error(`${name} must be a positive integer, got: ${raw}`);
   }
-  return Number(raw);
+  return value;
 }
+var REFUSED_EVENTS = ["pull_request", "pull_request_target"];
 async function run() {
+  const eventName = context2.eventName;
+  if (REFUSED_EVENTS.includes(eventName)) {
+    throw new Error(
+      `Refusing to run on ${eventName}, which would read the rule file from an unreviewed ref. Trigger this action on schedule or workflow_dispatch instead.`
+    );
+  }
+  if (eventName !== "schedule" && eventName !== "workflow_dispatch") {
+    warning(
+      `Running on ${eventName}. This action dismisses alerts based on the rule file in the checked-out ref; prefer schedule or workflow_dispatch so only reviewed rules apply.`
+    );
+  }
   const token = getInput("token", { required: true });
   const dryRun = getBooleanInput("dry_run");
   const configPath = getInput("config");
@@ -47989,6 +48002,8 @@ async function writeSummary(candidates, dryRun) {
   }
   await summary.write();
 }
+
+// src/index.ts
 run().catch((error52) => setFailed(error52 instanceof Error ? error52.message : String(error52)));
 /*! Bundled license information:
 

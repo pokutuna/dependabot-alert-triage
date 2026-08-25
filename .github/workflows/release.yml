@@ -32,21 +32,10 @@ jobs:
             exit 1
           fi
 
-      - name: Move the major tag
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          major="${GITHUB_REF_NAME%%.*}"
-          echo "Pointing ${major} at ${GITHUB_SHA} (${GITHUB_REF_NAME})"
-
-          if gh api "/repos/${GITHUB_REPOSITORY}/git/ref/tags/${major}" >/dev/null 2>&1; then
-            gh api --method PATCH "/repos/${GITHUB_REPOSITORY}/git/refs/tags/${major}" \
-              -f "sha=${GITHUB_SHA}" -F force=true >/dev/null
-          else
-            gh api --method POST "/repos/${GITHUB_REPOSITORY}/git/refs" \
-              -f "ref=refs/tags/${major}" -f "sha=${GITHUB_SHA}" >/dev/null
-          fi
-
+      # The release comes first: if it fails, the major tag has not moved yet and
+      # consumers stay on the previous release rather than landing on a commit
+      # with no release attached.
+      #
       # Pre-1.0 releases are marked as prereleases so the moving v0 tag is not
       # advertised as stable while the inputs and rule format can still change.
       - name: Create the release
@@ -63,3 +52,22 @@ jobs:
             --generate-notes \
             --verify-tag \
             $prerelease
+
+      # Concurrent tag pushes, or a rerun of an older tag's job, must not drag the
+      # major tag backwards: consumers on @vX would silently downgrade.
+      - name: Move the major tag
+        run: |
+          major="${GITHUB_REF_NAME%%.*}"
+
+          # checkout fetched the tag being released, so it is always in this list.
+          # grep drops any prerelease tag, which sorts above the release it precedes.
+          newest=$(git tag --list "${major}.*.*" --sort=v:refname |
+            { grep -E "^${major}\.[0-9]+\.[0-9]+$" || true; } | tail -1)
+          if [[ -n "$newest" && "$newest" != "$GITHUB_REF_NAME" ]]; then
+            echo "::notice::${newest} is newer than ${GITHUB_REF_NAME}. Leaving ${major} alone."
+            exit 0
+          fi
+
+          # -f creates the tag or moves it, so no existence check is needed.
+          git tag -f "$major"
+          git push --force origin "refs/tags/${major}"

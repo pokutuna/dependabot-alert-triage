@@ -25,11 +25,12 @@ git push origin v0.2.0
 
 1. Rejects the tag if it isn't an ancestor of `main`, so a tag pushed from an
    unreviewed branch can't be released.
-1. Moves the major tag (`v0`) to the tagged commit. GitHub Actions has no
-   version range syntax, so a moving major tag is the only way consumers using
-   `@v0` receive patches.
 1. Creates the GitHub release with generated notes, marked as a prerelease
    while the version is below `v1.0.0`.
+1. Moves the major tag (`v0`) to the tagged commit, but only if no newer
+   `v0.*.*` tag exists. GitHub Actions has no version range syntax, so a moving
+   major tag is the only way consumers using `@v0` receive patches — which also
+   means a tag that moved backwards would downgrade all of them.
 
 It doesn't build or test. CI covers that, including whether the committed
 `dist/` matches `src/`.

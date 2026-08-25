@@ -40,7 +40,6 @@ export async function run(): Promise<void> {
   const token = core.getInput("token", { required: true });
   const dryRun = core.getBooleanInput("dry_run");
   const configPath = core.getInput("config");
-  const maxDismissals = positiveIntInput("max_dismissals");
   const maxAlerts = positiveIntInput("max_alerts");
 
   const config = loadConfig(configPath);
@@ -74,15 +73,6 @@ export async function run(): Promise<void> {
   if (dryRun) {
     core.info("dry_run is true; no alerts were updated");
     core.setOutput("dismissed_count", 0);
-    return;
-  }
-
-  if (candidates.length > maxDismissals) {
-    core.setOutput("dismissed_count", 0);
-    core.setFailed(
-      `${candidates.length} candidates exceed max_dismissals (${maxDismissals}); no alerts were updated. ` +
-        "Review the rules or raise max_dismissals.",
-    );
     return;
   }
 

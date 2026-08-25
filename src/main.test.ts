@@ -39,7 +39,6 @@ function setup(options: Options = {}) {
   const inputs: Record<string, string> = {
     token: "t",
     config: writeConfig(RULE_FILE),
-    max_dismissals: "20",
     max_alerts: "1000",
     ...options.inputs,
   };
@@ -121,35 +120,6 @@ describe("run", () => {
     });
   });
 
-  it("reports without failing when a dry run exceeds max_dismissals", async () => {
-    // A dry run only reports, so it returns before the apply-time cap and never
-    // fails the job over a candidate count it was not going to act on.
-    setup({
-      alerts: [testAlert(1), testAlert(2)],
-      inputs: { max_dismissals: "1" },
-      booleanInputs: { dry_run: true },
-    });
-    await run();
-
-    expect(core.setFailed).not.toHaveBeenCalled();
-    expect(outputs()).toMatchObject({
-      candidates_count: 2,
-      dismissed_count: 0,
-    });
-  });
-
-  it("fails without updating anything when candidates exceed max_dismissals", async () => {
-    const { updateAlert } = setup({
-      alerts: [testAlert(1), testAlert(2)],
-      inputs: { max_dismissals: "1" },
-    });
-    await run();
-
-    expect(updateAlert).not.toHaveBeenCalled();
-    expect(core.setFailed).toHaveBeenCalledWith(expect.stringContaining("max_dismissals"));
-    expect(outputs()).toMatchObject({ dismissed_count: 0 });
-  });
-
   it("skips an alert that no longer matches when re-verified", async () => {
     const { updateAlert } = setup({
       alerts: [testAlert(1), testAlert(2)],
@@ -166,7 +136,7 @@ describe("run", () => {
     const alerts = Array.from({ length: 250 }, (_, i) => testAlert(i + 1));
     const { updateAlert } = setup({
       alerts,
-      inputs: { max_alerts: "100", max_dismissals: "1000" },
+      inputs: { max_alerts: "100" },
     });
     await run();
 
@@ -187,9 +157,9 @@ describe("run", () => {
     expect(core.warning).toHaveBeenCalledWith(expect.stringContaining("Running on push"));
   });
 
-  it("rejects a max_dismissals value that overflows to a non-safe integer", async () => {
-    setup({ inputs: { max_dismissals: "99999999999999999999" } });
-    await expect(run()).rejects.toThrow(/max_dismissals must be a positive integer/);
+  it("rejects a max_alerts value that overflows to a non-safe integer", async () => {
+    setup({ inputs: { max_alerts: "99999999999999999999" } });
+    await expect(run()).rejects.toThrow(/max_alerts must be a positive integer/);
   });
 
   it("leaves malware alerts alone when no rule opts in", async () => {

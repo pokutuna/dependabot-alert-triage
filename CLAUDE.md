@@ -23,7 +23,7 @@ A public GitHub Action that dismisses Dependabot alerts matching user-defined ru
 ## Core rules
 
 - Write commit messages, code comments, and documentation in English.
-- Safety invariants are non-negotiable: dismiss only `open` alerts, never send a PATCH request under `dry_run`, re-verify each alert right before the PATCH request, cap dismissals per run, and never touch malware alerts unless a rule explicitly opts in.
+- Safety invariants are non-negotiable: dismiss only `open` alerts, never send a PATCH request under `dry_run`, re-verify each alert right before the PATCH request, and never touch malware alerts unless a rule explicitly opts in.
 - The Action takes a `token` input and never embeds credentials. `GITHUB_TOKEN` can only read alerts; applying requires a GitHub App installation token or a fine-grained personal access token with Dependabot alerts write access.
 
 ## Documentation

@@ -47909,7 +47909,6 @@ async function run() {
   const token = getInput("token", { required: true });
   const dryRun = getBooleanInput("dry_run");
   const configPath = getInput("config");
-  const maxDismissals = positiveIntInput("max_dismissals");
   const maxAlerts = positiveIntInput("max_alerts");
   const config2 = loadConfig(configPath);
   const octokit = getOctokit(token);
@@ -47935,13 +47934,6 @@ async function run() {
   if (dryRun) {
     info("dry_run is true; no alerts were updated");
     setOutput("dismissed_count", 0);
-    return;
-  }
-  if (candidates.length > maxDismissals) {
-    setOutput("dismissed_count", 0);
-    setFailed(
-      `${candidates.length} candidates exceed max_dismissals (${maxDismissals}); no alerts were updated. Review the rules or raise max_dismissals.`
-    );
     return;
   }
   let dismissed = 0;

@@ -1,8 +1,5 @@
 # dependabot-alert-triage
 
-> [!IMPORTANT]
-> This Action is under development and has no release yet. `@v1` in the examples does not exist. To try it now, reference `pokutuna/dependabot-alert-triage@main` — but only with a read-only token and `dry_run: true`. Before passing a write-capable token, pin to a full-length commit SHA you have reviewed.
-
 A GitHub Action that dismisses Dependabot alerts matching rules defined in your repository, with a required reason and comment.
 
 GitHub provides no way to exclude directories from Dependabot alert scanning. The `.github/dependabot.yml` options only control version-update pull requests, not the Dependency Graph or alerts. This Action fills the gap: you keep tracking alerts for the whole repository, and dismiss only the alerts you have decided to accept — for example, dependencies under a `sketch/` directory that you can't update.
@@ -13,9 +10,9 @@ Dismissal does not change what gets scanned. New advisories still create new ale
 
 - Matches open alerts by manifest path (glob), ecosystem, package name, and classification, using rules stored in your repository.
 - Dismisses each matching alert with the reason and comment written in the rule, so the decision stays reviewable in version control.
-- Reports every candidate to the job summary before touching anything.
-- Supports a dry run that only reports candidates and never updates an alert.
-- Applies safeguards on every run: it re-verifies each alert immediately before dismissal, fails without updating anything when candidates exceed `max_dismissals`, and never dismisses malware alerts unless a rule opts in explicitly.
+- Reports every candidate to the job summary, and supports a dry run that reports without updating anything.
+
+Dismissing alerts automatically is a destructive operation, so the Action applies several safeguards on every run. For the full list, see [Safety behavior](#safety-behavior).
 
 ## Setup
 
@@ -37,12 +34,15 @@ rules:
 
 Rules follow these semantics:
 
-- Conditions within one rule are AND; multiple rules combine as OR. The first matching rule wins for each alert.
-- All match conditions are optional; an omitted condition means "no restriction". A rule without `packages` targets everything under its manifest path; a rule without `manifest_path` targets the packages across the repository.
+- Conditions within one rule are AND; multiple rules combine as OR. Rules are evaluated top to bottom, and the first matching rule wins for each alert.
+- All match conditions are optional; an omitted condition means "no restriction". A rule without `packages` targets everything under its manifest path; a rule without `manifest_path` targets the packages across the repository. A rule that omits `match` entirely matches every open `general` alert, so place any such catch-all rule last.
+- The rule file is validated strictly: `rules` must hold at least one rule, and an unknown key is an error.
 - `manifest_path` and package names are [picomatch](https://github.com/micromatch/picomatch) globs matched against the whole value shown in the alert. A value copied from an alert as-is always matches, because a pattern without glob characters is an exact, case-sensitive match.
 - `packages` maps an ecosystem to package-name patterns. For the valid ecosystem values, see the `dependency.package.ecosystem` field in the [Dependabot alerts REST API](https://docs.github.com/en/rest/dependabot/alerts/dependabot-alerts?apiVersion=2022-11-28#list-dependabot-alerts-for-a-repository), or list the ecosystems your repository actually has: `gh api "repos/OWNER/REPO/dependabot/alerts?state=open" --paginate --jq '.[].dependency.package.ecosystem' | sort -u`.
 - `reason` and `comment` are required. `reason` must be one of `fix_started`, `inaccurate`, `no_bandwidth`, `not_used`, or `tolerable_risk`. Pick the reason that reflects reality.
 - `classification` defaults to `general`. Malware alerts are never dismissed unless a rule sets `classification: malware` explicitly.
+
+Severity is not a match condition. The job summary reports it for each candidate, but a rule can't select alerts by it.
 
 A package-level rule also matches advisories published in the future. Record the accepted-risk rationale in the comment.
 
@@ -62,12 +62,12 @@ Package names accept the same patterns, so `"@react-router/*"` matches every pac
 
 ### 2. Prepare a token
 
-The Action never embeds credentials; it uses only the token you pass:
+The Action never embeds credentials; it uses only the token you pass. The workflow `GITHUB_TOKEN` can read alerts when the workflow grants `vulnerability-alerts: read`, but it can never dismiss them — GitHub Actions offers no write access for that permission. It is sufficient only for a dry run.
 
-- The workflow `GITHUB_TOKEN` can read alerts when the workflow grants `vulnerability-alerts: read`, but it can never dismiss them — GitHub Actions offers no write access for that permission. It is sufficient only for a dry run.
-- Dismissing requires a token with Dependabot alerts read and write access: a GitHub App installation token (recommended; generate it per run with [`actions/create-github-app-token`](https://github.com/actions/create-github-app-token)) or a fine-grained personal access token.
+Dismissing requires a token with Dependabot alerts read and write access. Either kind works:
 
-To use a GitHub App, register one, set its repository permission "Dependabot alerts" to "Read and write", and install it on the target repository only. Then store the client ID as a repository variable and the private key as a repository secret.
+- **GitHub App installation token** (recommended, because it isn't tied to an individual account and expires after each run). Register an App, set its repository permission "Dependabot alerts" to "Read and write", and install it on the target repository only. Store the client ID as a repository variable and the private key as a repository secret, then mint the token per run with [`actions/create-github-app-token`](https://github.com/actions/create-github-app-token).
+- **Fine-grained personal access token.** Grant it "Dependabot alerts" read and write on the target repository, and store it as a repository secret.
 
 ### 3. Add the workflow
 
@@ -98,12 +98,14 @@ jobs:
           private-key: ${{ secrets.DEPENDABOT_TRIAGE_APP_PRIVATE_KEY }}
           owner: ${{ github.repository_owner }}
           repositories: ${{ github.event.repository.name }}
+      # With a PAT instead of a GitHub App, delete the step above and pass
+      # `token: ${{ secrets.DEPENDABOT_TRIAGE_TOKEN }}` below.
 
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
 
-      - uses: pokutuna/dependabot-alert-triage@v1
+      - uses: pokutuna/dependabot-alert-triage@v0
         with:
           token: ${{ steps.app-token.outputs.token }}
           dry_run: ${{ inputs.dry_run }}
@@ -128,7 +130,7 @@ After the manual runs behave as expected, add a `schedule` trigger and change th
 ```yaml
 on:
   schedule:
-    - cron: "0 3 * * *"
+    - cron: "0 3 * * 1"
   workflow_dispatch:
     inputs:
       dry_run:
@@ -137,9 +139,9 @@ on:
         default: false
 ```
 
-Pass `dry_run: ${{ inputs.dry_run || false }}` to the Action, because `inputs` is empty on scheduled runs. Scheduled runs then apply the rules daily, and you can still start a manual dry run with `dry_run` set to `true` at any time.
+Pass `dry_run: ${{ inputs.dry_run || false }}` to the Action, because `inputs` is empty on scheduled runs. Weekly suits most repositories; adjust the frequency to how often you want new alerts triaged. Keeping `workflow_dispatch` lets you start a manual dry run with `dry_run` set to `true` at any time.
 
-Pin the Action to a full-length commit SHA or a release tag in workflows that pass a write-capable token.
+`@v0` moves to each new release, so a workflow that passes a write-capable token picks up code you haven't reviewed. In those workflows, pin every step that handles the token — this Action, `actions/create-github-app-token`, and `actions/checkout` — to a full-length commit SHA or an immutable `v0.Y.Z` tag. Releases are pre-1.0, so the inputs and the rule format can still change; the release notes call out anything that breaks.
 
 ## Inputs
 
@@ -149,13 +151,13 @@ Pin the Action to a full-length commit SHA or a release tag in workflows that pa
 | `dry_run` | No | `false` | Only report matching alerts without dismissing them |
 | `config` | No | `.github/dependabot-triage.yml` | Path to the rule file |
 | `max_dismissals` | No | `20` | Maximum number of alerts to dismiss in one run |
-| `max_alerts` | No | `1000` | Maximum number of open alerts to read from the API in one run |
+| `max_alerts` | No | `1000` | Maximum number of open alerts to read from the API in one run. Alerts beyond the limit are not examined |
 
 ## Outputs
 
 | Output | Description |
 |---|---|
-| `candidates_count` | Number of open alerts that matched a rule |
+| `candidates_count` | Number of the alerts read this run that matched a rule. Excludes alerts left unexamined when `max_alerts` was reached |
 | `dismissed_count` | Number of alerts that were dismissed |
 
 ## Safety behavior
@@ -163,11 +165,11 @@ Pin the Action to a full-length commit SHA or a release tag in workflows that pa
 The Action applies these safeguards on every run:
 
 - Only `state == open` alerts are candidates.
-- The Action refuses to run on `pull_request` and `pull_request_target`, because those events would read the rule file from a ref that has not been reviewed. Use `schedule` or `workflow_dispatch`.
-- When `dry_run` is `true`, the Action reports candidates to the job summary and never updates an alert.
+- The Action refuses to run on `pull_request` and `pull_request_target`, because those events would read the rule file from a ref that has not been reviewed. Other events run with a warning, so restrict the triggers to `schedule` and `workflow_dispatch` in any workflow that passes a write-capable token.
+- When `dry_run` is `true`, the Action reports candidates to the job summary and returns without updating an alert. It does not fail on the `max_dismissals` check, because it was never going to apply anything.
 - The candidate list is written to the job summary before applying.
 - Before each dismissal, the Action re-fetches the alert and re-verifies that it still matches the rule; alerts that changed are skipped.
-- If the number of candidates exceeds `max_dismissals`, the run fails without updating anything. This bounds the damage of a bad rule edit.
-- Reading stops at `max_alerts` open alerts, which bounds the API calls and memory a single run uses. The Action warns when it hits the limit, because alerts beyond it were not examined.
+- When `dry_run` is `false` and the number of candidates exceeds `max_dismissals`, the run fails before the first dismissal, leaving every alert untouched. This bounds the damage of a bad rule edit. The check runs once up front, so it does not make a run atomic: an API error partway through leaves the alerts dismissed so far dismissed.
+- Reading stops at `max_alerts` open alerts, which bounds the API calls and memory a single run uses. The Action warns when it hits the limit, because alerts beyond it were not examined — `candidates_count` then covers only the alerts it read.
 
 Repositories with the "Prevent direct alert dismissals" setting enabled reject direct dismissals. This Action does not support the dismissal-request flow that such repositories require.

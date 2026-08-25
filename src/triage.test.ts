@@ -108,6 +108,36 @@ describe("matchesRule", () => {
     ).toBe(false);
   });
 
+  it("does not cross directories with a single star", () => {
+    const r = rule({ match: { manifest_path: "experiments/*" } });
+    expect(matchesRule(alert({ dependency: { manifest_path: "experiments/setup.py" } }), r)).toBe(
+      true,
+    );
+    expect(matchesRule(alert(), r)).toBe(false);
+  });
+
+  it("ignores a leading slash in manifest_path", () => {
+    const r = rule({ match: { manifest_path: "/experiments/**" } });
+    expect(matchesRule(alert(), r)).toBe(true);
+  });
+
+  it("treats a trailing slash as everything under the directory", () => {
+    const r = rule({ match: { manifest_path: "experiments/" } });
+    expect(matchesRule(alert(), r)).toBe(true);
+  });
+
+  it("matches dotfile path segments", () => {
+    const r = rule({ match: { manifest_path: "experiments/**" } });
+    expect(
+      matchesRule(
+        alert({
+          dependency: { manifest_path: "experiments/.tools/package.json" },
+        }),
+        r,
+      ),
+    ).toBe(true);
+  });
+
   it("matches packages by exact ecosystem and name", () => {
     const r = rule({ match: { packages: { pip: ["torch"] } } });
     expect(matchesRule(alert(), r)).toBe(true);
@@ -119,6 +149,15 @@ describe("matchesRule", () => {
         r,
       ),
     ).toBe(false);
+  });
+
+  it("matches package names with a glob", () => {
+    const r = rule({ match: { packages: { npm: ["@react-router/*"] } } });
+    const npmAlert = (name: string) =>
+      alert({ dependency: { package: { ecosystem: "npm", name } } });
+    expect(matchesRule(npmAlert("@react-router/dev"), r)).toBe(true);
+    expect(matchesRule(npmAlert("@react-router/node"), r)).toBe(true);
+    expect(matchesRule(npmAlert("react-router"), r)).toBe(false);
   });
 
   it("does not match a package in another ecosystem", () => {

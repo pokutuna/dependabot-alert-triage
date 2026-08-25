@@ -37047,19 +37047,29 @@ function loadConfig(path) {
   }
   return result.data;
 }
+function normalizePathPattern(pattern) {
+  const stripped = pattern.replace(/^\/+/, "");
+  if (stripped === "") return "**";
+  if (stripped.endsWith("/")) return `${stripped}**`;
+  return stripped;
+}
+var GLOB_OPTIONS = { dot: true };
 function matchesRule(alert, rule) {
   if (alert.state !== "open") return false;
   const classification = alert.security_advisory.classification ?? "general";
   if (classification !== rule.classification) return false;
   if (rule.match?.manifest_path) {
     const manifestPath = alert.dependency.manifest_path;
-    if (!manifestPath || !import_picomatch.default.isMatch(manifestPath, rule.match.manifest_path)) return false;
+    const pattern = normalizePathPattern(rule.match.manifest_path);
+    if (!manifestPath || !import_picomatch.default.isMatch(manifestPath, pattern, GLOB_OPTIONS)) return false;
   }
   if (rule.match?.packages) {
     const pkg = alert.dependency.package;
     if (!pkg) return false;
     const names = rule.match.packages[pkg.ecosystem];
-    if (!names || !names.includes(pkg.name)) return false;
+    if (!names || !names.some((name) => import_picomatch.default.isMatch(pkg.name, name, GLOB_OPTIONS))) {
+      return false;
+    }
   }
   return true;
 }

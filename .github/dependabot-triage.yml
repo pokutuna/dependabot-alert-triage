@@ -1,10 +1,10 @@
 # Rule file for this repository. It also serves as the CI smoke-test fixture
 # and a live example of the format documented in README.md. This repository has
-# no experiments/ directory, so the rule matches nothing and the smoke test's
+# no sketch/ directory, so the rule matches nothing and the smoke test's
 # dry run always reports zero candidates.
 rules:
   - match:
-      manifest_path: "experiments/**"
+      manifest_path: "sketch/**"
     classification: general
     reason: tolerable_risk
-    comment: Dependencies under experiments/ are not used in production.
+    comment: Dependencies under sketch/ are not used in production.

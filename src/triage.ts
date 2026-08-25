@@ -53,6 +53,21 @@ export interface DependabotAlert {
   };
 }
 
+// Alerts report manifest_path relative to the repository root with no leading
+// slash. Accept patterns written with a leading slash (the dependabot.yml
+// `directory` convention) and treat a trailing slash as "everything under
+// this directory".
+export function normalizePathPattern(pattern: string): string {
+  const stripped = pattern.replace(/^\/+/, "");
+  if (stripped === "") return "**";
+  if (stripped.endsWith("/")) return `${stripped}**`;
+  return stripped;
+}
+
+// dot: true so patterns match dotfile segments; a rule matches whatever
+// path or name the alert displays.
+const GLOB_OPTIONS = { dot: true };
+
 export function matchesRule(alert: DependabotAlert, rule: TriageRule): boolean {
   if (alert.state !== "open") return false;
 
@@ -61,14 +76,17 @@ export function matchesRule(alert: DependabotAlert, rule: TriageRule): boolean {
 
   if (rule.match?.manifest_path) {
     const manifestPath = alert.dependency.manifest_path;
-    if (!manifestPath || !picomatch.isMatch(manifestPath, rule.match.manifest_path)) return false;
+    const pattern = normalizePathPattern(rule.match.manifest_path);
+    if (!manifestPath || !picomatch.isMatch(manifestPath, pattern, GLOB_OPTIONS)) return false;
   }
 
   if (rule.match?.packages) {
     const pkg = alert.dependency.package;
     if (!pkg) return false;
     const names = rule.match.packages[pkg.ecosystem];
-    if (!names || !names.includes(pkg.name)) return false;
+    if (!names || !names.some((name) => picomatch.isMatch(pkg.name, name, GLOB_OPTIONS))) {
+      return false;
+    }
   }
 
   return true;

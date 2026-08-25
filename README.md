@@ -5,7 +5,7 @@
 
 A GitHub Action that dismisses Dependabot alerts matching rules defined in your repository, with a required reason and comment.
 
-GitHub provides no way to exclude directories from Dependabot alert scanning. The `.github/dependabot.yml` options only control version-update pull requests, not the Dependency Graph or alerts. This Action fills the gap: you keep tracking alerts for the whole repository, and dismiss only the alerts you have decided to accept — for example, dependencies under an `experiments/` directory that you can't update.
+GitHub provides no way to exclude directories from Dependabot alert scanning. The `.github/dependabot.yml` options only control version-update pull requests, not the Dependency Graph or alerts. This Action fills the gap: you keep tracking alerts for the whole repository, and dismiss only the alerts you have decided to accept — for example, dependencies under a `sketch/` directory that you can't update.
 
 Dismissal does not change what gets scanned. New advisories still create new alerts, and this Action triages them again on the next run.
 
@@ -26,25 +26,39 @@ Create `.github/dependabot-triage.yml` in your repository:
 ```yaml
 rules:
   - match:
-      manifest_path: "experiments/**"
+      manifest_path: "sketch/**"
       packages:
         pip:
           - torch
     classification: general
     reason: tolerable_risk
-    comment: torch cannot be updated in the experiment environment
+    comment: torch under sketch/ cannot be updated
 ```
 
 Rules follow these semantics:
 
 - Conditions within one rule are AND; multiple rules combine as OR. The first matching rule wins for each alert.
 - All match conditions are optional; an omitted condition means "no restriction". A rule without `packages` targets everything under its manifest path; a rule without `manifest_path` targets the packages across the repository.
-- `manifest_path` is a glob matched against the alert's manifest path, such as `experiments/**`.
-- `packages` maps an ecosystem (`npm`, `pip`, and so on) to exact package names.
+- `manifest_path` and package names are [picomatch](https://github.com/micromatch/picomatch) globs matched against the whole value shown in the alert. A value copied from an alert as-is always matches, because a pattern without glob characters is an exact, case-sensitive match.
+- `packages` maps an ecosystem to package-name patterns. For the valid ecosystem values, see the `dependency.package.ecosystem` field in the [Dependabot alerts REST API](https://docs.github.com/en/rest/dependabot/alerts/dependabot-alerts?apiVersion=2022-11-28#list-dependabot-alerts-for-a-repository), or list the ecosystems your repository actually has: `gh api "repos/OWNER/REPO/dependabot/alerts?state=open" --paginate --jq '.[].dependency.package.ecosystem' | sort -u`.
 - `reason` and `comment` are required. `reason` must be one of `fix_started`, `inaccurate`, `no_bandwidth`, `not_used`, or `tolerable_risk`. Pick the reason that reflects reality.
 - `classification` defaults to `general`. Malware alerts are never dismissed unless a rule sets `classification: malware` explicitly.
 
 A package-level rule also matches advisories published in the future. Record the accepted-risk rationale in the comment.
+
+#### Writing patterns
+
+Alerts report `manifest_path` relative to the repository root with no leading slash, such as `sketch/foo/requirements.txt`. Write the pattern against that string. `*` matches within one directory level, and `**` crosses levels:
+
+| Pattern | Matches | Doesn't match |
+|---|---|---|
+| `sketch/**` | `sketch/requirements.txt`, `sketch/foo/pnpm-lock.yaml` | `apps/sketch.lock` |
+| `sketch/*` | `sketch/requirements.txt` | `sketch/foo/pnpm-lock.yaml` |
+| `**/pnpm-lock.yaml` | any `pnpm-lock.yaml` in the repository | — |
+
+Two forgiving normalizations apply: a leading `/` is ignored (`/sketch/**` equals `sketch/**`), and a trailing `/` means everything under the directory (`sketch/` equals `sketch/**`).
+
+Package names accept the same patterns, so `"@react-router/*"` matches every package in that npm scope while `react-router` alone matches only the exact name. Quote patterns that start with `@` or `*` so YAML doesn't misparse them.
 
 ### 2. Prepare a token
 

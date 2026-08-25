@@ -23013,12 +23013,12 @@ var require_log = __commonJS({
       if (logLevel === "debug")
         console.log(...messages);
     }
-    function warn(logLevel, warning) {
+    function warn(logLevel, warning2) {
       if (logLevel === "debug" || logLevel === "warn") {
         if (typeof node_process.emitWarning === "function")
-          node_process.emitWarning(warning);
+          node_process.emitWarning(warning2);
         else
-          console.warn(warning);
+          console.warn(warning2);
       }
     }
     exports2.debug = debug2;
@@ -26487,9 +26487,9 @@ var require_composer = __commonJS({
         this.prelude = [];
         this.errors = [];
         this.warnings = [];
-        this.onError = (source, code, message, warning) => {
+        this.onError = (source, code, message, warning2) => {
           const pos = getErrorPos(source);
-          if (warning)
+          if (warning2)
             this.warnings.push(new errors.YAMLWarning(pos, code, message));
           else
             this.errors.push(new errors.YAMLParseError(pos, code, message));
@@ -26562,10 +26562,10 @@ ${cb}` : comment;
           console.dir(token, { depth: null });
         switch (token.type) {
           case "directive":
-            this.directives.add(token.source, (offset, message, warning) => {
+            this.directives.add(token.source, (offset, message, warning2) => {
               const pos = getErrorPos(token);
               pos[0] += offset;
-              this.onError(pos, "BAD_DIRECTIVE", message, warning);
+              this.onError(pos, "BAD_DIRECTIVE", message, warning2);
             });
             this.prelude.push(token.source);
             this.atDirectives = true;
@@ -28607,7 +28607,7 @@ var require_public_api = __commonJS({
       const doc = parseDocument(src, options);
       if (!doc)
         return null;
-      doc.warnings.forEach((warning) => log.warn(doc.options.logLevel, warning));
+      doc.warnings.forEach((warning2) => log.warn(doc.options.logLevel, warning2));
       if (doc.errors.length > 0) {
         if (doc.options.logLevel !== "silent")
           throw doc.errors[0];
@@ -29196,6 +29196,9 @@ function setFailed(message) {
 }
 function error(message, properties = {}) {
   issueCommand("error", toCommandProperties(properties), message instanceof Error ? message.toString() : message);
+}
+function warning(message, properties = {}) {
+  issueCommand("warning", toCommandProperties(properties), message instanceof Error ? message.toString() : message);
 }
 function info(message) {
   process.stdout.write(message + os4.EOL);
@@ -47819,7 +47822,25 @@ var configSchema = external_exports.strictObject({
   rules: external_exports.array(ruleSchema).min(1)
 });
 function loadConfig(path) {
-  const parsed = (0, import_yaml.parse)((0, import_node_fs.readFileSync)(path, "utf8"));
+  let source;
+  try {
+    source = (0, import_node_fs.readFileSync)(path, "utf8");
+  } catch (error52) {
+    if (error52.code === "ENOENT") {
+      throw new Error(
+        `Rule file not found: ${path}. Check the config input, and make sure the workflow checks out the repository before this step.`
+      );
+    }
+    throw error52;
+  }
+  let parsed;
+  try {
+    parsed = (0, import_yaml.parse)(source);
+  } catch (error52) {
+    throw new Error(
+      `Invalid YAML in ${path}: ${error52 instanceof Error ? error52.message : String(error52)}`
+    );
+  }
   const result = configSchema.safeParse(parsed);
   if (!result.success) {
     const details = result.error.issues.map((issue3) => `${issue3.path.join(".") || "(root)"}: ${issue3.message}`).join("; ");
@@ -47865,24 +47886,40 @@ function findCandidates(alerts, rules) {
 }
 
 // src/main.ts
+function positiveIntInput(name) {
+  const raw = getInput(name);
+  if (!/^\d+$/.test(raw) || Number(raw) < 1) {
+    throw new Error(`${name} must be a positive integer, got: ${raw}`);
+  }
+  return Number(raw);
+}
 async function run() {
   const token = getInput("token", { required: true });
   const dryRun = getBooleanInput("dry_run");
   const configPath = getInput("config");
-  const maxDismissalsInput = getInput("max_dismissals");
-  if (!/^\d+$/.test(maxDismissalsInput) || Number(maxDismissalsInput) < 1) {
-    throw new Error(`max_dismissals must be a positive integer, got: ${maxDismissalsInput}`);
-  }
-  const maxDismissals = Number(maxDismissalsInput);
+  const maxDismissals = positiveIntInput("max_dismissals");
+  const maxAlerts = positiveIntInput("max_alerts");
   const config2 = loadConfig(configPath);
   const octokit = getOctokit(token);
   const { owner, repo } = context2.repo;
-  const alerts = await octokit.paginate(octokit.rest.dependabot.listAlertsForRepo, {
-    owner,
-    repo,
-    state: "open",
-    per_page: 100
-  });
+  const alerts = [];
+  let reachedLimit = false;
+  for await (const { data: page } of octokit.paginate.iterator(
+    octokit.rest.dependabot.listAlertsForRepo,
+    { owner, repo, state: "open", per_page: 100 }
+  )) {
+    alerts.push(...page);
+    if (alerts.length >= maxAlerts) {
+      alerts.length = maxAlerts;
+      reachedLimit = true;
+      break;
+    }
+  }
+  if (reachedLimit) {
+    warning(
+      `Read only the first ${maxAlerts} open alerts (max_alerts). Any alert beyond that limit was not examined in this run; raise max_alerts to cover them.`
+    );
+  }
   const candidates = findCandidates(alerts, config2.rules);
   info(`Found ${candidates.length} candidates among ${alerts.length} open alerts`);
   setOutput("candidates_count", candidates.length);

@@ -18,6 +18,10 @@ inputs:
     description: Maximum number of alerts to dismiss in one run
     required: false
     default: "20"
+  max_alerts:
+    description: Maximum number of open alerts to read from the API in one run
+    required: false
+    default: "1000"
 
 outputs:
   candidates_count:

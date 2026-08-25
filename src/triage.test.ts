@@ -76,6 +76,16 @@ rules:
     expect(config.rules[0].classification).toBe("general");
   });
 
+  it("reports a missing rule file with a hint about checkout", () => {
+    expect(() => loadConfig(join(tmpdir(), "triage-missing", "config.yml"))).toThrow(
+      /Rule file not found.*checks out the repository/s,
+    );
+  });
+
+  it("reports invalid YAML with the file path", () => {
+    expect(() => loadConfig(writeConfig("rules:\n  - reason: [\n"))).toThrow(/Invalid YAML in/);
+  });
+
   it("rejects unknown keys", () => {
     expect(() =>
       loadConfig(writeConfig("rules:\n  - reason: not_used\n    comment: x\n    severity: high\n")),

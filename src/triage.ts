@@ -23,7 +23,28 @@ export type TriageRule = z.infer<typeof ruleSchema>;
 export type TriageConfig = z.infer<typeof configSchema>;
 
 export function loadConfig(path: string): TriageConfig {
-  const parsed = parse(readFileSync(path, "utf8"));
+  let source: string;
+  try {
+    source = readFileSync(path, "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      throw new Error(
+        `Rule file not found: ${path}. Check the config input, and make sure the workflow ` +
+          "checks out the repository before this step.",
+      );
+    }
+    throw error;
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = parse(source);
+  } catch (error) {
+    throw new Error(
+      `Invalid YAML in ${path}: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+
   const result = configSchema.safeParse(parsed);
   if (!result.success) {
     const details = result.error.issues

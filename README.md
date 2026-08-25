@@ -149,6 +149,7 @@ Pin the Action to a full-length commit SHA or a release tag in workflows that pa
 | `dry_run` | No | `false` | Only report matching alerts without dismissing them |
 | `config` | No | `.github/dependabot-triage.yml` | Path to the rule file |
 | `max_dismissals` | No | `20` | Maximum number of alerts to dismiss in one run |
+| `max_alerts` | No | `1000` | Maximum number of open alerts to read from the API in one run |
 
 ## Outputs
 
@@ -166,5 +167,6 @@ The Action applies these safeguards on every run:
 - The candidate list is written to the job summary before applying.
 - Before each dismissal, the Action re-fetches the alert and re-verifies that it still matches the rule; alerts that changed are skipped.
 - If the number of candidates exceeds `max_dismissals`, the run fails without updating anything. This bounds the damage of a bad rule edit.
+- Reading stops at `max_alerts` open alerts, which bounds the API calls and memory a single run uses. The Action warns when it hits the limit, because alerts beyond it were not examined.
 
 Repositories with the "Prevent direct alert dismissals" setting enabled reject direct dismissals. This Action does not support the dismissal-request flow that such repositories require.

@@ -3,26 +3,21 @@ import picomatch from "picomatch";
 import { parse } from "yaml";
 import { z } from "zod";
 
-export const ruleSchema = z
-  .object({
-    match: z
-      .object({
-        manifest_path: z.string().min(1).optional(),
-        packages: z.record(z.string(), z.array(z.string().min(1)).min(1)).optional(),
-      })
-      .strict()
-      .optional(),
-    classification: z.enum(["general", "malware"]).default("general"),
-    reason: z.enum(["fix_started", "inaccurate", "no_bandwidth", "not_used", "tolerable_risk"]),
-    comment: z.string().min(1),
-  })
-  .strict();
+export const ruleSchema = z.strictObject({
+  match: z
+    .strictObject({
+      manifest_path: z.string().min(1).optional(),
+      packages: z.record(z.string(), z.array(z.string().min(1)).min(1)).optional(),
+    })
+    .optional(),
+  classification: z.enum(["general", "malware"]).default("general"),
+  reason: z.enum(["fix_started", "inaccurate", "no_bandwidth", "not_used", "tolerable_risk"]),
+  comment: z.string().min(1),
+});
 
-export const configSchema = z
-  .object({
-    rules: z.array(ruleSchema).min(1),
-  })
-  .strict();
+export const configSchema = z.strictObject({
+  rules: z.array(ruleSchema).min(1),
+});
 
 export type TriageRule = z.infer<typeof ruleSchema>;
 export type TriageConfig = z.infer<typeof configSchema>;

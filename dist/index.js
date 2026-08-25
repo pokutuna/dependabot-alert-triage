@@ -47945,36 +47945,29 @@ async function run() {
     return;
   }
   let dismissed = 0;
-  let skipped = 0;
-  for (const candidate of candidates) {
-    if (await dismiss(octokit, { owner, repo }, candidate, dryRun)) {
-      dismissed += 1;
-    } else {
-      skipped += 1;
+  for (const { alert, rule } of candidates) {
+    const { data: fresh } = await octokit.rest.dependabot.getAlert({
+      owner,
+      repo,
+      alert_number: alert.number
+    });
+    if (!matchesRule(fresh, rule)) {
+      info(`Skipped alert #${alert.number}: it no longer matches the rule`);
+      continue;
     }
+    await octokit.rest.dependabot.updateAlert({
+      owner,
+      repo,
+      alert_number: alert.number,
+      state: "dismissed",
+      dismissed_reason: rule.reason,
+      dismissed_comment: rule.comment
+    });
+    info(`Dismissed alert #${alert.number} (${rule.reason})`);
+    dismissed += 1;
   }
-  info(`Dismissed ${dismissed} alerts, skipped ${skipped}`);
+  info(`Dismissed ${dismissed} alerts, skipped ${candidates.length - dismissed}`);
   setOutput("dismissed_count", dismissed);
-}
-async function dismiss(octokit, repository, { alert, rule }, dryRun) {
-  if (dryRun) return false;
-  const { data: fresh } = await octokit.rest.dependabot.getAlert({
-    ...repository,
-    alert_number: alert.number
-  });
-  if (!matchesRule(fresh, rule)) {
-    info(`Skipped alert #${alert.number}: it no longer matches the rule`);
-    return false;
-  }
-  await octokit.rest.dependabot.updateAlert({
-    ...repository,
-    alert_number: alert.number,
-    state: "dismissed",
-    dismissed_reason: rule.reason,
-    dismissed_comment: rule.comment
-  });
-  info(`Dismissed alert #${alert.number} (${rule.reason})`);
-  return true;
 }
 async function writeSummary(candidates, dryRun) {
   summary.addHeading(`Dependabot alert triage ${dryRun ? "(dry run)" : ""}`.trim(), 2);

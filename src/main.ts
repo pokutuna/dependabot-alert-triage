@@ -87,53 +87,34 @@ export async function run(): Promise<void> {
   }
 
   let dismissed = 0;
-  let skipped = 0;
-  for (const candidate of candidates) {
-    if (await dismiss(octokit, { owner, repo }, candidate, dryRun)) {
-      dismissed += 1;
-    } else {
-      skipped += 1;
+  for (const { alert, rule } of candidates) {
+    // Re-fetch and re-check right before the PATCH request, so a listing that
+    // went stale while this run was working cannot dismiss an alert that no
+    // longer matches.
+    const { data: fresh } = await octokit.rest.dependabot.getAlert({
+      owner,
+      repo,
+      alert_number: alert.number,
+    });
+    if (!matchesRule(fresh as unknown as DependabotAlert, rule)) {
+      core.info(`Skipped alert #${alert.number}: it no longer matches the rule`);
+      continue;
     }
+
+    await octokit.rest.dependabot.updateAlert({
+      owner,
+      repo,
+      alert_number: alert.number,
+      state: "dismissed",
+      dismissed_reason: rule.reason,
+      dismissed_comment: rule.comment,
+    });
+    core.info(`Dismissed alert #${alert.number} (${rule.reason})`);
+    dismissed += 1;
   }
 
-  core.info(`Dismissed ${dismissed} alerts, skipped ${skipped}`);
+  core.info(`Dismissed ${dismissed} alerts, skipped ${candidates.length - dismissed}`);
   core.setOutput("dismissed_count", dismissed);
-}
-
-type Octokit = ReturnType<typeof github.getOctokit>;
-
-/**
- * The only place that dismisses an alert. Every caller therefore inherits the
- * two per-alert invariants: a dry run never sends a PATCH request, and the
- * alert is re-fetched and re-checked so a stale listing cannot dismiss an alert
- * that no longer matches. Returns whether the alert was dismissed.
- */
-export async function dismiss(
-  octokit: Octokit,
-  repository: { owner: string; repo: string },
-  { alert, rule }: Candidate,
-  dryRun: boolean,
-): Promise<boolean> {
-  if (dryRun) return false;
-
-  const { data: fresh } = await octokit.rest.dependabot.getAlert({
-    ...repository,
-    alert_number: alert.number,
-  });
-  if (!matchesRule(fresh as unknown as DependabotAlert, rule)) {
-    core.info(`Skipped alert #${alert.number}: it no longer matches the rule`);
-    return false;
-  }
-
-  await octokit.rest.dependabot.updateAlert({
-    ...repository,
-    alert_number: alert.number,
-    state: "dismissed",
-    dismissed_reason: rule.reason,
-    dismissed_comment: rule.comment,
-  });
-  core.info(`Dismissed alert #${alert.number} (${rule.reason})`);
-  return true;
 }
 
 async function writeSummary(candidates: Candidate[], dryRun: boolean): Promise<void> {

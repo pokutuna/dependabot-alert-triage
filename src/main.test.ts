@@ -1,8 +1,8 @@
 import * as core from "@actions/core";
 import * as github from "@actions/github";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { dismiss, run } from "./main";
-import { alert, rule, writeConfig } from "./testing";
+import { run } from "./main";
+import { alert, writeConfig } from "./testing";
 import type { DependabotAlert } from "./triage";
 
 vi.mock("@actions/core");
@@ -65,18 +65,17 @@ function setup(options: Options = {}) {
     }
   };
 
-  const octokit = {
+  vi.mocked(github.getOctokit).mockReturnValue({
     paginate: { iterator },
     rest: { dependabot: { getAlert, updateAlert } },
-  } as unknown as ReturnType<typeof github.getOctokit>;
-  vi.mocked(github.getOctokit).mockReturnValue(octokit);
+  } as unknown as ReturnType<typeof github.getOctokit>);
 
   vi.mocked(github, { partial: true }).context = {
     eventName: options.eventName ?? "workflow_dispatch",
     repo: REPO,
   } as typeof github.context;
 
-  return { updateAlert, getAlert, octokit };
+  return { updateAlert, getAlert };
 }
 
 function outputs(): Record<string, unknown> {
@@ -137,20 +136,6 @@ describe("run", () => {
       candidates_count: 2,
       dismissed_count: 0,
     });
-  });
-
-  it("refuses to dismiss in the write path itself during a dry run", async () => {
-    // Defense in depth, pinned separately from the early return in run(): the
-    // write path guards itself, so a future caller cannot lose the guarantee.
-    const { updateAlert, getAlert, octokit } = setup();
-    const candidate = { alert: testAlert(1), rule: rule(), ruleIndex: 0 };
-
-    await expect(dismiss(octokit, REPO, candidate, true)).resolves.toBe(false);
-    expect(getAlert).not.toHaveBeenCalled();
-    expect(updateAlert).not.toHaveBeenCalled();
-
-    await expect(dismiss(octokit, REPO, candidate, false)).resolves.toBe(true);
-    expect(updateAlert).toHaveBeenCalledTimes(1);
   });
 
   it("fails without updating anything when candidates exceed max_dismissals", async () => {

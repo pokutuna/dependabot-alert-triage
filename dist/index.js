@@ -47877,9 +47877,9 @@ function matchesRule(alert, rule) {
 function findCandidates(alerts, rules) {
   const candidates = [];
   for (const alert of alerts) {
-    const ruleIndex = rules.findIndex((rule) => matchesRule(alert, rule));
-    if (ruleIndex >= 0) {
-      candidates.push({ alert, rule: rules[ruleIndex], ruleIndex });
+    const rule = rules.find((rule2) => matchesRule(alert, rule2));
+    if (rule) {
+      candidates.push({ alert, rule });
     }
   }
   return candidates;

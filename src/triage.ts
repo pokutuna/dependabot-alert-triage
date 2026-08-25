@@ -111,15 +111,15 @@ export function matchesRule(alert: DependabotAlert, rule: TriageRule): boolean {
 export interface Candidate {
   alert: DependabotAlert;
   rule: TriageRule;
-  ruleIndex: number;
 }
 
+// Rules are ordered: the first one that matches decides the reason and comment.
 export function findCandidates(alerts: DependabotAlert[], rules: TriageRule[]): Candidate[] {
   const candidates: Candidate[] = [];
   for (const alert of alerts) {
-    const ruleIndex = rules.findIndex((rule) => matchesRule(alert, rule));
-    if (ruleIndex >= 0) {
-      candidates.push({ alert, rule: rules[ruleIndex], ruleIndex });
+    const rule = rules.find((rule) => matchesRule(alert, rule));
+    if (rule) {
+      candidates.push({ alert, rule });
     }
   }
   return candidates;

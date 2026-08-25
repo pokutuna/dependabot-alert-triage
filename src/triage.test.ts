@@ -165,7 +165,9 @@ describe("findCandidates", () => {
       rules,
     );
     expect(candidates).toHaveLength(2);
-    expect(candidates[0].ruleIndex).toBe(0);
-    expect(candidates[1].ruleIndex).toBe(1);
+    // The first alert matches both rules, so picking rules[0] shows the search
+    // stops at the first match rather than falling through to the catch-all.
+    expect(candidates[0].rule).toBe(rules[0]);
+    expect(candidates[1].rule).toBe(rules[1]);
   });
 });

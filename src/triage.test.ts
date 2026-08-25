@@ -1,42 +1,8 @@
-import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import {
-  type DependabotAlert,
-  type TriageRule,
-  findCandidates,
-  loadConfig,
-  matchesRule,
-  ruleSchema,
-} from "./triage";
-
-function writeConfig(content: string): string {
-  const path = join(mkdtempSync(join(tmpdir(), "triage-")), "config.yml");
-  writeFileSync(path, content);
-  return path;
-}
-
-function alert(overrides: Partial<DependabotAlert> = {}): DependabotAlert {
-  return {
-    number: 1,
-    state: "open",
-    dependency: {
-      manifest_path: "experiments/foo/requirements.txt",
-      package: { ecosystem: "pip", name: "torch" },
-    },
-    security_advisory: { classification: "general", severity: "high" },
-    ...overrides,
-  };
-}
-
-function rule(overrides: Record<string, unknown> = {}): TriageRule {
-  return ruleSchema.parse({
-    reason: "tolerable_risk",
-    comment: "accepted risk",
-    ...overrides,
-  });
-}
+import { alert, rule, writeConfig } from "./testing";
+import { findCandidates, loadConfig, matchesRule } from "./triage";
 
 describe("loadConfig", () => {
   it("parses a valid config", () => {
@@ -44,7 +10,7 @@ describe("loadConfig", () => {
       writeConfig(`
 rules:
   - match:
-      manifest_path: "experiments/**"
+      manifest_path: "sketch/**"
       packages:
         pip:
           - torch
@@ -111,7 +77,7 @@ describe("matchesRule", () => {
   });
 
   it("matches manifest_path with a glob", () => {
-    const r = rule({ match: { manifest_path: "experiments/**" } });
+    const r = rule({ match: { manifest_path: "sketch/**" } });
     expect(matchesRule(alert(), r)).toBe(true);
     expect(
       matchesRule(alert({ dependency: { manifest_path: "apps/web/package-lock.json" } }), r),
@@ -119,29 +85,27 @@ describe("matchesRule", () => {
   });
 
   it("does not cross directories with a single star", () => {
-    const r = rule({ match: { manifest_path: "experiments/*" } });
-    expect(matchesRule(alert({ dependency: { manifest_path: "experiments/setup.py" } }), r)).toBe(
-      true,
-    );
+    const r = rule({ match: { manifest_path: "sketch/*" } });
+    expect(matchesRule(alert({ dependency: { manifest_path: "sketch/setup.py" } }), r)).toBe(true);
     expect(matchesRule(alert(), r)).toBe(false);
   });
 
   it("ignores a leading slash in manifest_path", () => {
-    const r = rule({ match: { manifest_path: "/experiments/**" } });
+    const r = rule({ match: { manifest_path: "/sketch/**" } });
     expect(matchesRule(alert(), r)).toBe(true);
   });
 
   it("treats a trailing slash as everything under the directory", () => {
-    const r = rule({ match: { manifest_path: "experiments/" } });
+    const r = rule({ match: { manifest_path: "sketch/" } });
     expect(matchesRule(alert(), r)).toBe(true);
   });
 
   it("matches dotfile path segments", () => {
-    const r = rule({ match: { manifest_path: "experiments/**" } });
+    const r = rule({ match: { manifest_path: "sketch/**" } });
     expect(
       matchesRule(
         alert({
-          dependency: { manifest_path: "experiments/.tools/package.json" },
+          dependency: { manifest_path: "sketch/.tools/package.json" },
         }),
         r,
       ),
@@ -185,7 +149,7 @@ describe("findCandidates", () => {
   it("uses the first matching rule", () => {
     const rules = [
       rule({
-        match: { manifest_path: "experiments/**" },
+        match: { manifest_path: "sketch/**" },
         reason: "tolerable_risk",
       }),
       rule({ reason: "not_used" }),

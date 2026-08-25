@@ -17,19 +17,19 @@ function positiveIntInput(name: string): number {
   return value;
 }
 
-// Pull request events run whatever rule file the head ref carries, so a rule
-// that has not been reviewed yet could select unrelated alerts. Nothing needs
-// dismissing at pull request time, so refuse instead of trusting the ref.
-const REFUSED_EVENTS = ["pull_request", "pull_request_target"];
-
 export async function run(): Promise<void> {
-  const eventName = github.context.eventName;
-  if (REFUSED_EVENTS.includes(eventName)) {
+  const { eventName } = github.context;
+  // Pull request events run whatever rule file the head ref carries, so a rule
+  // nobody reviewed could select unrelated alerts. Nothing needs dismissing at
+  // pull request time, so refuse rather than trust the ref.
+  if (eventName === "pull_request" || eventName === "pull_request_target") {
     throw new Error(
       `Refusing to run on ${eventName}, which would read the rule file from an unreviewed ref. ` +
         "Trigger this action on schedule or workflow_dispatch instead.",
     );
   }
+  // Other events are only warned about: a push to the default branch carries
+  // reviewed rules, and the event name alone cannot tell the two cases apart.
   if (eventName !== "schedule" && eventName !== "workflow_dispatch") {
     core.warning(
       `Running on ${eventName}. This action dismisses alerts based on the rule file in the ` +
@@ -50,7 +50,6 @@ export async function run(): Promise<void> {
   // Stop paginating at max_alerts so a repository with a large backlog cannot
   // exhaust the API budget or the runner's memory.
   const alerts: DependabotAlert[] = [];
-  let reachedLimit = false;
   for await (const { data: page } of octokit.paginate.iterator(
     octokit.rest.dependabot.listAlertsForRepo,
     { owner, repo, state: "open", per_page: 100 },
@@ -58,15 +57,12 @@ export async function run(): Promise<void> {
     alerts.push(...(page as unknown as DependabotAlert[]));
     if (alerts.length >= maxAlerts) {
       alerts.length = maxAlerts;
-      reachedLimit = true;
+      core.warning(
+        `Read only the first ${maxAlerts} open alerts (max_alerts). Any alert beyond that ` +
+          "limit was not examined in this run; raise max_alerts to cover them.",
+      );
       break;
     }
-  }
-  if (reachedLimit) {
-    core.warning(
-      `Read only the first ${maxAlerts} open alerts (max_alerts). Any alert beyond that ` +
-        "limit was not examined in this run; raise max_alerts to cover them.",
-    );
   }
 
   const candidates = findCandidates(alerts, config.rules);
@@ -92,32 +88,52 @@ export async function run(): Promise<void> {
 
   let dismissed = 0;
   let skipped = 0;
-  for (const { alert, rule } of candidates) {
-    // Re-fetch and re-verify right before dismissing, so a stale listing never causes a wrong PATCH.
-    const { data: fresh } = await octokit.rest.dependabot.getAlert({
-      owner,
-      repo,
-      alert_number: alert.number,
-    });
-    if (!matchesRule(fresh as unknown as DependabotAlert, rule)) {
-      core.info(`Skipped alert #${alert.number}: it no longer matches the rule`);
+  for (const candidate of candidates) {
+    if (await dismiss(octokit, { owner, repo }, candidate, dryRun)) {
+      dismissed += 1;
+    } else {
       skipped += 1;
-      continue;
     }
-    await octokit.rest.dependabot.updateAlert({
-      owner,
-      repo,
-      alert_number: alert.number,
-      state: "dismissed",
-      dismissed_reason: rule.reason,
-      dismissed_comment: rule.comment,
-    });
-    core.info(`Dismissed alert #${alert.number} (${rule.reason})`);
-    dismissed += 1;
   }
 
   core.info(`Dismissed ${dismissed} alerts, skipped ${skipped}`);
   core.setOutput("dismissed_count", dismissed);
+}
+
+type Octokit = ReturnType<typeof github.getOctokit>;
+
+/**
+ * The only place that dismisses an alert. Every caller therefore inherits the
+ * two per-alert invariants: a dry run never sends a PATCH request, and the
+ * alert is re-fetched and re-checked so a stale listing cannot dismiss an alert
+ * that no longer matches. Returns whether the alert was dismissed.
+ */
+export async function dismiss(
+  octokit: Octokit,
+  repository: { owner: string; repo: string },
+  { alert, rule }: Candidate,
+  dryRun: boolean,
+): Promise<boolean> {
+  if (dryRun) return false;
+
+  const { data: fresh } = await octokit.rest.dependabot.getAlert({
+    ...repository,
+    alert_number: alert.number,
+  });
+  if (!matchesRule(fresh as unknown as DependabotAlert, rule)) {
+    core.info(`Skipped alert #${alert.number}: it no longer matches the rule`);
+    return false;
+  }
+
+  await octokit.rest.dependabot.updateAlert({
+    ...repository,
+    alert_number: alert.number,
+    state: "dismissed",
+    dismissed_reason: rule.reason,
+    dismissed_comment: rule.comment,
+  });
+  core.info(`Dismissed alert #${alert.number} (${rule.reason})`);
+  return true;
 }
 
 async function writeSummary(candidates: Candidate[], dryRun: boolean): Promise<void> {

@@ -1,36 +1,14 @@
-import { mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import * as core from "@actions/core";
 import * as github from "@actions/github";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { run } from "./main";
+import { dismiss, run } from "./main";
+import { alert, rule, writeConfig } from "./testing";
+import type { DependabotAlert } from "./triage";
 
 vi.mock("@actions/core");
 vi.mock("@actions/github");
 
-interface FakeAlert {
-  number: number;
-  state: string;
-  dependency: {
-    manifest_path: string;
-    package: { ecosystem: string; name: string };
-  };
-  security_advisory: { classification: string; severity: string };
-}
-
-function fakeAlert(number: number, overrides: Partial<FakeAlert> = {}): FakeAlert {
-  return {
-    number,
-    state: "open",
-    dependency: {
-      manifest_path: "sketch/package-lock.json",
-      package: { ecosystem: "npm", name: "left-pad" },
-    },
-    security_advisory: { classification: "general", severity: "high" },
-    ...overrides,
-  };
-}
+const REPO = { owner: "o", repo: "r" };
 
 const RULE_FILE = `
 rules:
@@ -40,32 +18,35 @@ rules:
     comment: not used in production
 `;
 
-function writeRuleFile(content = RULE_FILE): string {
-  const path = join(mkdtempSync(join(tmpdir(), "triage-main-")), "rules.yml");
-  writeFileSync(path, content);
-  return path;
-}
+const testAlert = (number: number, overrides: Partial<DependabotAlert> = {}) =>
+  alert({
+    number,
+    dependency: { manifest_path: "sketch/package-lock.json" },
+    ...overrides,
+  });
 
 interface Options {
-  alerts?: FakeAlert[];
+  alerts?: DependabotAlert[];
   inputs?: Record<string, string>;
   booleanInputs?: Record<string, boolean>;
   eventName?: string;
   // Alert state as seen by the re-verification fetch, keyed by alert number.
-  freshAlerts?: Record<number, FakeAlert>;
+  freshAlerts?: Record<number, DependabotAlert>;
 }
 
 function setup(options: Options = {}) {
-  const alerts = options.alerts ?? [fakeAlert(1)];
+  const alerts = options.alerts ?? [testAlert(1)];
   const inputs: Record<string, string> = {
     token: "t",
-    config: writeRuleFile(),
+    config: writeConfig(RULE_FILE),
     max_dismissals: "20",
     max_alerts: "1000",
     ...options.inputs,
   };
 
-  vi.mocked(core.getInput).mockImplementation((name: string) => inputs[name] ?? "");
+  vi.mocked(core.getInput).mockImplementation(
+    (name: string) => inputs[name] ?? "",
+  );
   vi.mocked(core.getBooleanInput).mockImplementation(
     (name: string) => options.booleanInputs?.[name] ?? false,
   );
@@ -75,10 +56,13 @@ function setup(options: Options = {}) {
   vi.mocked(core.summary).write = vi.fn().mockResolvedValue(core.summary);
 
   const updateAlert = vi.fn().mockResolvedValue({});
-  const getAlert = vi.fn(async ({ alert_number }: { alert_number: number }) => ({
-    data: options.freshAlerts?.[alert_number] ?? alerts.find((a) => a.number === alert_number),
-  }));
-  const listAlertsForRepo = vi.fn();
+  const getAlert = vi.fn(
+    async ({ alert_number }: { alert_number: number }) => ({
+      data:
+        options.freshAlerts?.[alert_number] ??
+        alerts.find((a) => a.number === alert_number),
+    }),
+  );
 
   // paginate.iterator yields pages of 100, mirroring the per_page the action requests.
   const iterator = async function* () {
@@ -87,17 +71,18 @@ function setup(options: Options = {}) {
     }
   };
 
-  vi.mocked(github.getOctokit).mockReturnValue({
+  const octokit = {
     paginate: { iterator },
-    rest: { dependabot: { listAlertsForRepo, getAlert, updateAlert } },
-  } as unknown as ReturnType<typeof github.getOctokit>);
+    rest: { dependabot: { getAlert, updateAlert } },
+  } as unknown as ReturnType<typeof github.getOctokit>;
+  vi.mocked(github.getOctokit).mockReturnValue(octokit);
 
   vi.mocked(github, { partial: true }).context = {
     eventName: options.eventName ?? "workflow_dispatch",
-    repo: { owner: "o", repo: "r" },
+    repo: REPO,
   } as typeof github.context;
 
-  return { updateAlert, getAlert };
+  return { updateAlert, getAlert, octokit };
 }
 
 function outputs(): Record<string, unknown> {
@@ -129,42 +114,81 @@ describe("run", () => {
   });
 
   it("never updates an alert during a dry run", async () => {
-    const { updateAlert } = setup({ booleanInputs: { dry_run: true } });
+    const { updateAlert, getAlert } = setup({
+      booleanInputs: { dry_run: true },
+    });
     await run();
 
     expect(updateAlert).not.toHaveBeenCalled();
+    // A dry run returns before the dismissal loop, so it does not even re-fetch.
+    expect(getAlert).not.toHaveBeenCalled();
     expect(outputs()).toMatchObject({
       candidates_count: 1,
       dismissed_count: 0,
     });
   });
 
+  it("reports without failing when a dry run exceeds max_dismissals", async () => {
+    // A dry run only reports, so it returns before the apply-time cap and never
+    // fails the job over a candidate count it was not going to act on.
+    setup({
+      alerts: [testAlert(1), testAlert(2)],
+      inputs: { max_dismissals: "1" },
+      booleanInputs: { dry_run: true },
+    });
+    await run();
+
+    expect(core.setFailed).not.toHaveBeenCalled();
+    expect(outputs()).toMatchObject({
+      candidates_count: 2,
+      dismissed_count: 0,
+    });
+  });
+
+  it("refuses to dismiss in the write path itself during a dry run", async () => {
+    // Defense in depth, pinned separately from the early return in run(): the
+    // write path guards itself, so a future caller cannot lose the guarantee.
+    const { updateAlert, getAlert, octokit } = setup();
+    const candidate = { alert: testAlert(1), rule: rule(), ruleIndex: 0 };
+
+    await expect(dismiss(octokit, REPO, candidate, true)).resolves.toBe(false);
+    expect(getAlert).not.toHaveBeenCalled();
+    expect(updateAlert).not.toHaveBeenCalled();
+
+    await expect(dismiss(octokit, REPO, candidate, false)).resolves.toBe(true);
+    expect(updateAlert).toHaveBeenCalledTimes(1);
+  });
+
   it("fails without updating anything when candidates exceed max_dismissals", async () => {
     const { updateAlert } = setup({
-      alerts: [fakeAlert(1), fakeAlert(2)],
+      alerts: [testAlert(1), testAlert(2)],
       inputs: { max_dismissals: "1" },
     });
     await run();
 
     expect(updateAlert).not.toHaveBeenCalled();
-    expect(core.setFailed).toHaveBeenCalledWith(expect.stringContaining("max_dismissals"));
+    expect(core.setFailed).toHaveBeenCalledWith(
+      expect.stringContaining("max_dismissals"),
+    );
     expect(outputs()).toMatchObject({ dismissed_count: 0 });
   });
 
   it("skips an alert that no longer matches when re-verified", async () => {
     const { updateAlert } = setup({
-      alerts: [fakeAlert(1), fakeAlert(2)],
-      freshAlerts: { 1: fakeAlert(1, { state: "fixed" }) },
+      alerts: [testAlert(1), testAlert(2)],
+      freshAlerts: { 1: testAlert(1, { state: "fixed" }) },
     });
     await run();
 
     expect(updateAlert).toHaveBeenCalledTimes(1);
-    expect(updateAlert).toHaveBeenCalledWith(expect.objectContaining({ alert_number: 2 }));
+    expect(updateAlert).toHaveBeenCalledWith(
+      expect.objectContaining({ alert_number: 2 }),
+    );
     expect(outputs()).toMatchObject({ dismissed_count: 1 });
   });
 
   it("stops reading alerts at max_alerts", async () => {
-    const alerts = Array.from({ length: 250 }, (_, i) => fakeAlert(i + 1));
+    const alerts = Array.from({ length: 250 }, (_, i) => testAlert(i + 1));
     const { updateAlert } = setup({
       alerts,
       inputs: { max_alerts: "100", max_dismissals: "1000" },
@@ -172,31 +196,39 @@ describe("run", () => {
     await run();
 
     expect(updateAlert).toHaveBeenCalledTimes(100);
-    expect(core.warning).toHaveBeenCalledWith(expect.stringContaining("max_alerts"));
+    expect(core.warning).toHaveBeenCalledWith(
+      expect.stringContaining("max_alerts"),
+    );
     expect(outputs()).toMatchObject({ candidates_count: 100 });
   });
 
   it("refuses to run on pull request events", async () => {
     const { updateAlert } = setup({ eventName: "pull_request_target" });
-    await expect(run()).rejects.toThrow(/Refusing to run on pull_request_target/);
+    await expect(run()).rejects.toThrow(
+      /Refusing to run on pull_request_target/,
+    );
     expect(updateAlert).not.toHaveBeenCalled();
   });
 
   it("warns when the event is neither schedule nor workflow_dispatch", async () => {
     setup({ eventName: "push" });
     await run();
-    expect(core.warning).toHaveBeenCalledWith(expect.stringContaining("Running on push"));
+    expect(core.warning).toHaveBeenCalledWith(
+      expect.stringContaining("Running on push"),
+    );
   });
 
   it("rejects a max_dismissals value that overflows to a non-safe integer", async () => {
     setup({ inputs: { max_dismissals: "99999999999999999999" } });
-    await expect(run()).rejects.toThrow(/max_dismissals must be a positive integer/);
+    await expect(run()).rejects.toThrow(
+      /max_dismissals must be a positive integer/,
+    );
   });
 
   it("leaves malware alerts alone when no rule opts in", async () => {
     const { updateAlert } = setup({
       alerts: [
-        fakeAlert(1, {
+        testAlert(1, {
           security_advisory: { classification: "malware", severity: "high" },
         }),
       ],

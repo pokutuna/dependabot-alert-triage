@@ -33,7 +33,12 @@ jobs:
 
   # Run the committed action end to end in dry-run mode. This catches a broken
   # action.yml, a stale dist/ entrypoint, or API wiring errors that unit tests miss.
+  #
+  # Push only, for two reasons: the action refuses to run on pull request events
+  # at all, and a pull request must not get a token that can read this
+  # repository's Dependabot alerts.
   smoke-test:
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
       contents: read

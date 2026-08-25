@@ -29,3 +29,4 @@ A public GitHub Action that dismisses Dependabot alerts matching user-defined ru
 ## Documentation
 
 - docs/design.md (local notes, not committed) — dismissal API mechanics, rule semantics (AND within a rule, OR across rules), safety invariants, token model, and release conventions. When present, read it before changing matching or dismissal logic. README.md covers the user-facing behavior and rule format.
+- docs/release.md — tag scheme (immutable `vX.Y.Z`, moving `vX`) and the manual steps before the tag push. Read it before cutting a release or changing the release workflow.

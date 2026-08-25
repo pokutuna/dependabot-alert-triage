@@ -1,0 +1,65 @@
+name: Release
+
+# Pushing a vX.Y.Z tag publishes the release and moves the major tag (vX) to it,
+# so consumers pinned to @vX pick the release up. This workflow does not build or
+# test; it trusts the CI run on the tagged commit. See docs/release.md.
+on:
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash -euo pipefail {0}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      # A tag can be pushed from any commit. Releasing one that is not on main
+      # would ship code that never passed review. Checking out a tag leaves no
+      # origin/main ref behind, hence the explicit fetch.
+      - name: Verify the tag is on main
+        run: |
+          git fetch --no-tags origin main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" FETCH_HEAD; then
+            echo "::error::${GITHUB_REF_NAME} is not an ancestor of main. Refusing to release."
+            exit 1
+          fi
+
+      - name: Move the major tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          major="${GITHUB_REF_NAME%%.*}"
+          echo "Pointing ${major} at ${GITHUB_SHA} (${GITHUB_REF_NAME})"
+
+          if gh api "/repos/${GITHUB_REPOSITORY}/git/ref/tags/${major}" >/dev/null 2>&1; then
+            gh api --method PATCH "/repos/${GITHUB_REPOSITORY}/git/refs/tags/${major}" \
+              -f "sha=${GITHUB_SHA}" -F force=true >/dev/null
+          else
+            gh api --method POST "/repos/${GITHUB_REPOSITORY}/git/refs" \
+              -f "ref=refs/tags/${major}" -f "sha=${GITHUB_SHA}" >/dev/null
+          fi
+
+      # Pre-1.0 releases are marked as prereleases so the moving v0 tag is not
+      # advertised as stable while the inputs and rule format can still change.
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          prerelease=""
+          case "$GITHUB_REF_NAME" in
+            v0.*) prerelease="--prerelease" ;;
+          esac
+
+          # --verify-tag so a missing tag fails the run instead of being created.
+          gh release create "$GITHUB_REF_NAME" \
+            --generate-notes \
+            --verify-tag \
+            $prerelease

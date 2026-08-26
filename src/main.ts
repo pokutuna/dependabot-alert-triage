@@ -76,7 +76,7 @@ export async function run(): Promise<void> {
   core.info(`Found ${candidates.length} candidates among ${alerts.length} open alerts`);
   core.setOutput("candidates_count", candidates.length);
 
-  await writeSummary(candidates, dryRun);
+  await writeSummary(candidates, alerts.length, dryRun);
 
   if (dryRun) {
     core.info("dry_run is true; no alerts were updated");
@@ -115,23 +115,56 @@ export async function run(): Promise<void> {
   core.setOutput("dismissed_count", dismissed);
 }
 
-async function writeSummary(candidates: Candidate[], dryRun: boolean): Promise<void> {
+function escapeHtml(text: string): string {
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function alertCount(n: number): string {
+  return `${n} alert${n === 1 ? "" : "s"}`;
+}
+
+async function writeSummary(
+  candidates: Candidate[],
+  openAlertsCount: number,
+  dryRun: boolean,
+): Promise<void> {
   core.summary.addHeading(`Dependabot alert triage ${dryRun ? "(dry run)" : ""}`.trim(), 2);
   if (candidates.length === 0) {
     core.summary.addRaw("No open alerts matched the rules.", true);
-  } else {
+    await core.summary.write();
+    return;
+  }
+
+  core.summary.addRaw(
+    `${candidates.length} of ${openAlertsCount} open alerts matched the rules.`,
+    true,
+  );
+
+  // Group candidates by the lockfile they come from, so each manifest reads as
+  // one block with its own count.
+  const groups = new Map<string, Candidate[]>();
+  for (const candidate of candidates) {
+    const manifest = candidate.alert.dependency.manifest_path ?? "(unknown manifest)";
+    const group = groups.get(manifest) ?? [];
+    group.push(candidate);
+    groups.set(manifest, group);
+  }
+
+  for (const [manifest, group] of [...groups].sort(([a], [b]) => a.localeCompare(b))) {
+    core.summary.addHeading(
+      `<code>${escapeHtml(manifest)}</code> (${alertCount(group.length)})`,
+      3,
+    );
     core.summary.addTable([
       [
         { data: "Alert", header: true },
-        { data: "Manifest", header: true },
         { data: "Package", header: true },
         { data: "Classification", header: true },
         { data: "Severity", header: true },
         { data: "Reason", header: true },
       ],
-      ...candidates.map(({ alert, rule }) => [
+      ...group.map(({ alert, rule }) => [
         `#${alert.number}`,
-        alert.dependency.manifest_path ?? "",
         alert.dependency.package
           ? `${alert.dependency.package.ecosystem}/${alert.dependency.package.name}`
           : "",

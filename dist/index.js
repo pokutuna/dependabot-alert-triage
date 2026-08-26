@@ -47945,7 +47945,7 @@ async function run() {
   const candidates = findCandidates(alerts, config2.rules);
   info(`Found ${candidates.length} candidates among ${alerts.length} open alerts`);
   setOutput("candidates_count", candidates.length);
-  await writeSummary(candidates, dryRun);
+  await writeSummary(candidates, alerts.length, dryRun);
   if (dryRun) {
     info("dry_run is true; no alerts were updated");
     setOutput("dismissed_count", 0);
@@ -47976,23 +47976,45 @@ async function run() {
   info(`Dismissed ${dismissed} alerts, skipped ${candidates.length - dismissed}`);
   setOutput("dismissed_count", dismissed);
 }
-async function writeSummary(candidates, dryRun) {
+function escapeHtml(text) {
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+function alertCount(n) {
+  return `${n} alert${n === 1 ? "" : "s"}`;
+}
+async function writeSummary(candidates, openAlertsCount, dryRun) {
   summary.addHeading(`Dependabot alert triage ${dryRun ? "(dry run)" : ""}`.trim(), 2);
   if (candidates.length === 0) {
     summary.addRaw("No open alerts matched the rules.", true);
-  } else {
+    await summary.write();
+    return;
+  }
+  summary.addRaw(
+    `${candidates.length} of ${openAlertsCount} open alerts matched the rules.`,
+    true
+  );
+  const groups = /* @__PURE__ */ new Map();
+  for (const candidate of candidates) {
+    const manifest = candidate.alert.dependency.manifest_path ?? "(unknown manifest)";
+    const group = groups.get(manifest) ?? [];
+    group.push(candidate);
+    groups.set(manifest, group);
+  }
+  for (const [manifest, group] of [...groups].sort(([a], [b]) => a.localeCompare(b))) {
+    summary.addHeading(
+      `<code>${escapeHtml(manifest)}</code> (${alertCount(group.length)})`,
+      3
+    );
     summary.addTable([
       [
         { data: "Alert", header: true },
-        { data: "Manifest", header: true },
         { data: "Package", header: true },
         { data: "Classification", header: true },
         { data: "Severity", header: true },
         { data: "Reason", header: true }
       ],
-      ...candidates.map(({ alert, rule }) => [
+      ...group.map(({ alert, rule }) => [
         `#${alert.number}`,
-        alert.dependency.manifest_path ?? "",
         alert.dependency.package ? `${alert.dependency.package.ecosystem}/${alert.dependency.package.name}` : "",
         alert.security_advisory.classification ?? "general",
         alert.security_advisory.severity ?? "",

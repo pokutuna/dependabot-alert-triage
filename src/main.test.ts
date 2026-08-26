@@ -149,6 +149,28 @@ describe("run", () => {
     });
   });
 
+  it("writes a summary grouped by manifest path with counts", async () => {
+    setup({
+      alerts: [
+        testAlert(1),
+        testAlert(2, { dependency: { manifest_path: "sketch/sub/package-lock.json" } }),
+        testAlert(3, { dependency: { manifest_path: "sketch/sub/package-lock.json" } }),
+        testAlert(4, { dependency: { manifest_path: "other/package-lock.json" } }),
+      ],
+      booleanInputs: { dry_run: true },
+    });
+    await run();
+
+    expect(core.summary.addRaw).toHaveBeenCalledWith("3 of 4 open alerts matched the rules.", true);
+    const headings = vi.mocked(core.summary.addHeading).mock.calls.map(([text]) => text);
+    expect(headings).toEqual([
+      "Dependabot alert triage (dry run)",
+      "<code>sketch/package-lock.json</code> (1 alert)",
+      "<code>sketch/sub/package-lock.json</code> (2 alerts)",
+    ]);
+    expect(core.summary.addTable).toHaveBeenCalledTimes(2);
+  });
+
   it("skips an alert that no longer matches when re-verified", async () => {
     const { updateAlert } = setup({
       alerts: [testAlert(1), testAlert(2)],

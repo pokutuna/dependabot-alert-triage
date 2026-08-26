@@ -105,6 +105,35 @@ describe("run", () => {
     });
   });
 
+  it("uses rules supplied inline", async () => {
+    const { updateAlert } = setup({
+      inputs: {
+        config: "",
+        rules: `
+- match:
+    manifest_path: "sketch/**"
+  reason: not_used
+  comment: supplied inline
+`,
+      },
+    });
+    await run();
+
+    expect(updateAlert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        dismissed_reason: "not_used",
+        dismissed_comment: "supplied inline",
+      }),
+    );
+  });
+
+  it("rejects rules and config used together", async () => {
+    const { updateAlert } = setup({ inputs: { rules: "- reason: not_used\n  comment: x" } });
+
+    await expect(run()).rejects.toThrow(/either rules or config/);
+    expect(updateAlert).not.toHaveBeenCalled();
+  });
+
   it("never updates an alert during a dry run", async () => {
     const { updateAlert, getAlert } = setup({
       booleanInputs: { dry_run: true },

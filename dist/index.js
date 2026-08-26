@@ -47821,6 +47821,26 @@ var ruleSchema = external_exports.strictObject({
 var configSchema = external_exports.strictObject({
   rules: external_exports.array(ruleSchema).min(1)
 });
+var DEFAULT_CONFIG_PATH = ".github/dependabot-triage.yml";
+function parseYaml(source, label) {
+  try {
+    return (0, import_yaml.parse)(source);
+  } catch (error52) {
+    throw new Error(
+      `Invalid YAML in ${label}: ${error52 instanceof Error ? error52.message : String(error52)}`
+    );
+  }
+}
+function formatIssues(result) {
+  return result.issues.map((issue3) => `${issue3.path.join(".") || "(root)"}: ${issue3.message}`).join("; ");
+}
+function loadInlineRules(source) {
+  const result = external_exports.array(ruleSchema).min(1).safeParse(parseYaml(source, "rules input"));
+  if (!result.success) {
+    throw new Error(`Invalid rules input: ${formatIssues(result.error)}`);
+  }
+  return { rules: result.data };
+}
 function loadConfig(path) {
   let source;
   try {
@@ -47833,18 +47853,9 @@ function loadConfig(path) {
     }
     throw error52;
   }
-  let parsed;
-  try {
-    parsed = (0, import_yaml.parse)(source);
-  } catch (error52) {
-    throw new Error(
-      `Invalid YAML in ${path}: ${error52 instanceof Error ? error52.message : String(error52)}`
-    );
-  }
-  const result = configSchema.safeParse(parsed);
+  const result = configSchema.safeParse(parseYaml(source, path));
   if (!result.success) {
-    const details = result.error.issues.map((issue3) => `${issue3.path.join(".") || "(root)"}: ${issue3.message}`).join("; ");
-    throw new Error(`Invalid config at ${path}: ${details}`);
+    throw new Error(`Invalid config at ${path}: ${formatIssues(result.error)}`);
   }
   return result.data;
 }
@@ -47898,19 +47909,23 @@ async function run() {
   const { eventName } = context2;
   if (eventName === "pull_request" || eventName === "pull_request_target") {
     throw new Error(
-      `Refusing to run on ${eventName}, which would read the rule file from an unreviewed ref. Trigger this action on schedule or workflow_dispatch instead.`
+      `Refusing to run on ${eventName}, which would read triage rules from an unreviewed ref. Trigger this action on schedule or workflow_dispatch instead.`
     );
   }
   if (eventName !== "schedule" && eventName !== "workflow_dispatch") {
     warning(
-      `Running on ${eventName}. This action dismisses alerts based on the rule file in the checked-out ref; prefer schedule or workflow_dispatch so only reviewed rules apply.`
+      `Running on ${eventName}. This action dismisses alerts based on rules in the event ref; prefer schedule or workflow_dispatch so only reviewed rules apply.`
     );
   }
   const token = getInput("token", { required: true });
   const dryRun = getBooleanInput("dry_run");
+  const inlineRules = getInput("rules");
   const configPath = getInput("config");
   const maxAlerts = positiveIntInput("max_alerts");
-  const config2 = loadConfig(configPath);
+  if (inlineRules && configPath) {
+    throw new Error("Specify either rules or config, not both");
+  }
+  const config2 = inlineRules ? loadInlineRules(inlineRules) : loadConfig(configPath || DEFAULT_CONFIG_PATH);
   const octokit = getOctokit(token);
   const { owner, repo } = context2.repo;
   const alerts = [];

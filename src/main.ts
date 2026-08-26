@@ -2,9 +2,11 @@ import * as core from "@actions/core";
 import * as github from "@actions/github";
 import {
   type Candidate,
+  DEFAULT_CONFIG_PATH,
   type DependabotAlert,
   findCandidates,
   loadConfig,
+  loadInlineRules,
   matchesRule,
 } from "./triage";
 
@@ -19,12 +21,12 @@ function positiveIntInput(name: string): number {
 
 export async function run(): Promise<void> {
   const { eventName } = github.context;
-  // Pull request events run whatever rule file the head ref carries, so a rule
+  // Pull request events run whatever triage rules the head ref carries, so a rule
   // nobody reviewed could select unrelated alerts. Nothing needs dismissing at
   // pull request time, so refuse rather than trust the ref.
   if (eventName === "pull_request" || eventName === "pull_request_target") {
     throw new Error(
-      `Refusing to run on ${eventName}, which would read the rule file from an unreviewed ref. ` +
+      `Refusing to run on ${eventName}, which would read triage rules from an unreviewed ref. ` +
         "Trigger this action on schedule or workflow_dispatch instead.",
     );
   }
@@ -32,17 +34,23 @@ export async function run(): Promise<void> {
   // reviewed rules, and the event name alone cannot tell the two cases apart.
   if (eventName !== "schedule" && eventName !== "workflow_dispatch") {
     core.warning(
-      `Running on ${eventName}. This action dismisses alerts based on the rule file in the ` +
-        "checked-out ref; prefer schedule or workflow_dispatch so only reviewed rules apply.",
+      `Running on ${eventName}. This action dismisses alerts based on rules in the event ref; ` +
+        "prefer schedule or workflow_dispatch so only reviewed rules apply.",
     );
   }
 
   const token = core.getInput("token", { required: true });
   const dryRun = core.getBooleanInput("dry_run");
+  const inlineRules = core.getInput("rules");
   const configPath = core.getInput("config");
   const maxAlerts = positiveIntInput("max_alerts");
 
-  const config = loadConfig(configPath);
+  if (inlineRules && configPath) {
+    throw new Error("Specify either rules or config, not both");
+  }
+  const config = inlineRules
+    ? loadInlineRules(inlineRules)
+    : loadConfig(configPath || DEFAULT_CONFIG_PATH);
   const octokit = github.getOctokit(token);
   const { owner, repo } = github.context.repo;
 

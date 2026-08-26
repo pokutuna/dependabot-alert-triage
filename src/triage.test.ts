@@ -2,7 +2,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { alert, rule, writeConfig } from "./testing";
-import { findCandidates, loadConfig, matchesRule } from "./triage";
+import { findCandidates, loadConfig, loadInlineRules, matchesRule } from "./triage";
 
 describe("loadConfig", () => {
   it("parses a valid config", () => {
@@ -56,6 +56,32 @@ rules:
     expect(() =>
       loadConfig(writeConfig("rules:\n  - reason: not_used\n    comment: x\n    severity: high\n")),
     ).toThrow(/Invalid config/);
+  });
+});
+
+describe("loadInlineRules", () => {
+  it("parses a YAML rule array", () => {
+    const config = loadInlineRules(`
+- match:
+    manifest_path: "sketch/**"
+  reason: not_used
+  comment: experiments are never deployed
+`);
+
+    expect(config.rules).toHaveLength(1);
+    expect(config.rules[0].match?.manifest_path).toBe("sketch/**");
+  });
+
+  it("rejects a config object instead of a rule array", () => {
+    expect(() =>
+      loadInlineRules(
+        "rules:\n  - reason: not_used\n    comment: experiments are never deployed\n",
+      ),
+    ).toThrow(/Invalid rules input/);
+  });
+
+  it("reports invalid YAML as coming from the rules input", () => {
+    expect(() => loadInlineRules("- reason: [\n")).toThrow(/Invalid YAML in rules input/);
   });
 });
 

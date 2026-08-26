@@ -1,5 +1,5 @@
 name: Dependabot Alert Triage
-description: Dismiss Dependabot alerts that match rules defined in your repository
+description: Dismiss Dependabot alerts that match rules in your workflow or repository
 author: pokutuna
 
 inputs:
@@ -11,9 +11,11 @@ inputs:
     required: false
     default: "false"
   config:
-    description: Path to the rule file
+    description: Path to the rule file; defaults to .github/dependabot-triage.yml
     required: false
-    default: .github/dependabot-triage.yml
+  rules:
+    description: Rules as an inline YAML array; cannot be combined with config
+    required: false
   max_alerts:
     description: Maximum number of open alerts to read from the API in one run
     required: false

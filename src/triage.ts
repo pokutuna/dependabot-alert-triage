@@ -22,6 +22,32 @@ export const configSchema = z.strictObject({
 export type TriageRule = z.infer<typeof ruleSchema>;
 export type TriageConfig = z.infer<typeof configSchema>;
 
+export const DEFAULT_CONFIG_PATH = ".github/dependabot-triage.yml";
+
+function parseYaml(source: string, label: string): unknown {
+  try {
+    return parse(source);
+  } catch (error) {
+    throw new Error(
+      `Invalid YAML in ${label}: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+}
+
+function formatIssues(result: z.ZodError): string {
+  return result.issues
+    .map((issue) => `${issue.path.join(".") || "(root)"}: ${issue.message}`)
+    .join("; ");
+}
+
+export function loadInlineRules(source: string): TriageConfig {
+  const result = z.array(ruleSchema).min(1).safeParse(parseYaml(source, "rules input"));
+  if (!result.success) {
+    throw new Error(`Invalid rules input: ${formatIssues(result.error)}`);
+  }
+  return { rules: result.data };
+}
+
 export function loadConfig(path: string): TriageConfig {
   let source: string;
   try {
@@ -36,21 +62,9 @@ export function loadConfig(path: string): TriageConfig {
     throw error;
   }
 
-  let parsed: unknown;
-  try {
-    parsed = parse(source);
-  } catch (error) {
-    throw new Error(
-      `Invalid YAML in ${path}: ${error instanceof Error ? error.message : String(error)}`,
-    );
-  }
-
-  const result = configSchema.safeParse(parsed);
+  const result = configSchema.safeParse(parseYaml(source, path));
   if (!result.success) {
-    const details = result.error.issues
-      .map((issue) => `${issue.path.join(".") || "(root)"}: ${issue.message}`)
-      .join("; ");
-    throw new Error(`Invalid config at ${path}: ${details}`);
+    throw new Error(`Invalid config at ${path}: ${formatIssues(result.error)}`);
   }
   return result.data;
 }

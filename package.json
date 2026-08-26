@@ -1,6 +1,6 @@
 {
   "name": "dependabot-alert-triage",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "GitHub Action that dismisses Dependabot alerts matching rules defined in your repository",
   "license": "MIT",

@@ -18,6 +18,11 @@ updates:
         update-types:
           - "minor"
           - "patch"
+    # Keep Node.js types on the major that action.yml runs on (runs.using),
+    # so code cannot use APIs the runtime lacks. Bump both together.
+    ignore:
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: "github-actions"
     directory: "/"

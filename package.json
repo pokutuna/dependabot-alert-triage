@@ -16,7 +16,7 @@
     "@actions/core": "^3.0.1",
     "@actions/github": "^9.1.1",
     "picomatch": "^4.0.7",
-    "yaml": "^2.7.0",
+    "yaml": "^2.9.1",
     "zod": "^4.6.5"
   },
   "devDependencies": {
